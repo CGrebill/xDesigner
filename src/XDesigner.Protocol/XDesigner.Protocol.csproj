@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>XDesigner.Protocol</RootNamespace>
+    <Description>RPC contracts and DTOs shared by the designer app and the Avalonia render host. References neither Avalonia nor WinUI.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="StreamJsonRpc" />
+    <PackageReference Include="MessagePack" />
+  </ItemGroup>
+
+</Project>

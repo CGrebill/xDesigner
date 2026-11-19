@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="XDesigner.App.Controls.PropertiesPane"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Properties window (§9.2): name + type header, Properties | Events tabs, toolbar, categorized rows. -->
+  <Grid RowSpacing="6">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />  <!-- title -->
+      <RowDefinition Height="Auto" />  <!-- name / type -->
+      <RowDefinition Height="Auto" />  <!-- tabs -->
+      <RowDefinition Height="Auto" />  <!-- toolbar -->
+      <RowDefinition Height="*" />     <!-- rows -->
+      <RowDefinition Height="Auto" />  <!-- problem -->
+    </Grid.RowDefinitions>
+
+    <TextBlock Text="Properties" Style="{StaticResource PaneTitleStyle}" Margin="12,10,12,0" />
+
+    <Grid x:Name="Header" Grid.Row="1" Margin="12,0,12,0" ColumnSpacing="8">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <TextBox x:Name="NameBox" PlaceholderText="(no name)" AutomationProperties.Name="Name"
+               ToolTipService.ToolTip="The control's name: use it in C# code (button1.Content = &quot;Hi&quot;)."
+               KeyDown="NameBox_KeyDown" LostFocus="NameBox_LostFocus" />
+      <TextBlock x:Name="TypeText" Grid.Column="1" VerticalAlignment="Center" MaxWidth="140" TextTrimming="CharacterEllipsis"
+                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+    </Grid>
+
+    <SelectorBar x:Name="Tabs" Grid.Row="2" Margin="4,0,4,0" SelectionChanged="Tabs_SelectionChanged">
+      <SelectorBarItem x:Name="PropertiesTab" Text="Properties" IsSelected="True">
+        <SelectorBarItem.Icon><FontIcon Glyph="&#xE90F;" /></SelectorBarItem.Icon>
+      </SelectorBarItem>
+      <SelectorBarItem x:Name="EventsTab" Text="Events">
+        <SelectorBarItem.Icon><FontIcon Glyph="&#xE945;" /></SelectorBarItem.Icon>
+      </SelectorBarItem>
+    </SelectorBar>
+
+    <Grid x:Name="Toolbar" Grid.Row="3" Margin="12,0,12,0" ColumnSpacing="4">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <TextBox x:Name="SearchBox" PlaceholderText="Search properties" TextChanged="Filter_Changed" AutomationProperties.Name="Search properties" />
+      <ToggleButton x:Name="AlphabeticalToggle" Grid.Column="1" Padding="8,5" Click="Filter_Changed"
+                    ToolTipService.ToolTip="Sort A–Z instead of by category" AutomationProperties.Name="Alphabetical">
+        <FontIcon Glyph="&#xE8CB;" FontSize="14" />
+      </ToggleButton>
+      <ToggleButton x:Name="SetOnlyToggle" Grid.Column="2" Padding="8,5" Click="Filter_Changed"
+                    ToolTipService.ToolTip="Show only properties set in the XAML" AutomationProperties.Name="Only set properties">
+        <FontIcon Glyph="&#xE71C;" FontSize="14" />
+      </ToggleButton>
+      <ToggleButton x:Name="AdvancedToggle" Grid.Column="3" Padding="8,5" Click="Filter_Changed"
+                    ToolTipService.ToolTip="Show advanced properties (templates, styles, transforms…)" AutomationProperties.Name="Advanced properties">
+        <FontIcon Glyph="&#xE713;" FontSize="14" />
+      </ToggleButton>
+    </Grid>
+
+    <Grid x:Name="PropertiesContent" Grid.Row="4">
+      <ScrollViewer x:Name="RowsScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel x:Name="RowsPanel" Padding="0,0,0,8" />
+      </ScrollViewer>
+      <TextBlock x:Name="MessageText" Margin="12,4" Style="{StaticResource PanePlaceholderTextStyle}"
+                 Text="Open a file to see the selected control's properties." />
+    </Grid>
+
+    <!-- Events tab (§9.3): double-click a row (or the control on the form) to create its handler in the .axaml.cs. -->
+    <Grid x:Name="EventsContent" Grid.Row="4" Visibility="Collapsed">
+      <ScrollViewer x:Name="EventsScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel x:Name="EventsPanel" Padding="0,0,0,8" />
+      </ScrollViewer>
+      <TextBlock x:Name="EventsMessage" Margin="12,4" Style="{StaticResource PanePlaceholderTextStyle}"
+                 Text="Select a control to see its events." />
+    </Grid>
+
+    <InfoBar x:Name="ProblemBar" Grid.Row="5" Margin="8,0,8,8" Severity="Error" IsOpen="False" IsClosable="True" />
+  </Grid>
+</UserControl>

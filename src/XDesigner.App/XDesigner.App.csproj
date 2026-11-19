@@ -1,0 +1,120 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>XDesigner.App</RootNamespace>
+    <AssemblyName>xDesigner</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Exe/taskbar icon; also loaded at runtime for the title bar (AppWindow.SetIcon). Made by tools/make-icon.ps1. -->
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <!-- x64 only: WinUI 3 has no AnyCPU build, and the release ships for x64 (ARM64 Windows runs it emulated). -->
+    <Platforms>x64</Platforms>
+    <Platform>x64</Platform>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <!-- Unpackaged exe that bundles the Windows App SDK runtime, so nothing else has to be installed. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Generates and publishes the app's own resources (xDesigner.pri with the compiled XAML) for an unpackaged app. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <Description>xDesigner: a visual designer for Avalonia UI (WinUI 3 shell).</Description>
+  </PropertyGroup>
+
+  <!-- Release publish: self-contained (no .NET install needed) and precompiled for a faster start. -->
+  <PropertyGroup>
+    <SelfContained>true</SelfContained>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <!--
+      Microsoft.VisualStudio.Threading (via StreamJsonRpc) declares a WPF framework reference for Windows targets, which
+      made a self-contained publish carry all of WPF (~60 MB). The app doesn't use any of it; see UseVsThreadingWithoutWpf.
+    -->
+    <DisableTransitiveFrameworkReferences>true</DisableTransitiveFrameworkReferences>
+  </PropertyGroup>
+
+  <!--
+    Without the WPF framework, the Windows build of Microsoft.VisualStudio.Threading (net8.0-windows) can't resolve its
+    WPF references. Its plain net8.0 build is the same library minus a few WPF dispatcher helpers, so use that one.
+  -->
+  <Target Name="UseVsThreadingWithoutWpf" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <_VsThreadingCompile Include="@(ResolvedCompileFileDefinitions)" Condition="'%(ResolvedCompileFileDefinitions.NuGetPackageId)' == 'Microsoft.VisualStudio.Threading.Only'" />
+      <_VsThreadingRuntime Include="@(RuntimeCopyLocalItems)" Condition="'%(RuntimeCopyLocalItems.NuGetPackageId)' == 'Microsoft.VisualStudio.Threading.Only'" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_VsThreadingWindowsDll>@(_VsThreadingRuntime)</_VsThreadingWindowsDll>
+      <_VsThreadingDll>$(_VsThreadingWindowsDll.Replace('net8.0-windows7.0', 'net8.0'))</_VsThreadingDll>
+      <_VsThreadingVersion>@(_VsThreadingRuntime->'%(NuGetPackageVersion)')</_VsThreadingVersion>
+    </PropertyGroup>
+    <Error Condition="'$(_VsThreadingDll)' != '' And !Exists('$(_VsThreadingDll)')" Text="Expected $(_VsThreadingDll) (the non-Windows build of Microsoft.VisualStudio.Threading)." />
+    <ItemGroup Condition="'$(_VsThreadingDll)' != ''">
+      <ResolvedCompileFileDefinitions Remove="@(_VsThreadingCompile)" />
+      <ResolvedCompileFileDefinitions Include="$(_VsThreadingDll)" HintPath="$(_VsThreadingDll)" Private="false" ExternallyResolved="true"
+                                      NuGetPackageId="Microsoft.VisualStudio.Threading.Only" NuGetPackageVersion="$(_VsThreadingVersion)" NuGetSourceType="Package" />
+      <RuntimeCopyLocalItems Remove="@(_VsThreadingRuntime)" />
+      <RuntimeCopyLocalItems Include="$(_VsThreadingDll)" AssetType="runtime" CopyLocal="true" DestinationSubPath="Microsoft.VisualStudio.Threading.dll"
+                             NuGetPackageId="Microsoft.VisualStudio.Threading.Only" NuGetPackageVersion="$(_VsThreadingVersion)" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <!-- Not used: keeps the AI, machine learning (onnxruntime, DirectML; ~40 MB), Search and Widgets parts out of the app. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.AI" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.ML" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Search" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Widgets" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.Windows.AI.MachineLearning" ExcludeAssets="all" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Shipped next to the exe for Help › License / Third-party notices (as .txt so they open in a text editor). -->
+    <Content Include="..\..\LICENSE.md" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Help › Report a problem and the About box link to the repository. -->
+    <AssemblyMetadata Include="RepositoryUrl" Value="$(RepositoryUrl)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\XDesigner.Core\XDesigner.Core.csproj" />
+    <ProjectReference Include="..\XDesigner.Protocol\XDesigner.Protocol.csproj" />
+  </ItemGroup>
+
+  <!--
+    The render host is a separate .NET exe with its own Avalonia/Skia dependencies, so it is built on its own and
+    placed in a "renderhost" subfolder next to the app, not referenced.
+    Build: its (framework-dependent) build output is copied into the app's output folder. Platform=AnyCPU matches how
+    a solution build builds it, so MSBuild reuses that build instead of running a second, conflicting one.
+    Publish: it is published self-contained and precompiled into the publish folder.
+  -->
+  <PropertyGroup>
+    <RenderHostProject>..\XDesigner.RenderHost\XDesigner.RenderHost.csproj</RenderHostProject>
+  </PropertyGroup>
+  <Target Name="CopyRenderHost" AfterTargets="Build">
+    <MSBuild Projects="$(RenderHostProject)" Targets="Build"
+             Properties="Configuration=$(Configuration);Platform=AnyCPU"
+             RemoveProperties="RuntimeIdentifier;SelfContained;TargetFramework;WindowsAppSDKSelfContained;PublishReadyToRun">
+      <Output TaskParameter="TargetOutputs" ItemName="_RenderHostTargetPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <_RenderHostOutDir>@(_RenderHostTargetPath->'%(RootDir)%(Directory)')</_RenderHostOutDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RenderHostFiles Include="$(_RenderHostOutDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_RenderHostFiles)"
+          DestinationFiles="@(_RenderHostFiles->'$(OutDir)renderhost\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="PublishRenderHost" AfterTargets="Publish">
+    <MSBuild Projects="$(RenderHostProject)" Targets="Publish"
+             Properties="Configuration=$(Configuration);Platform=AnyCPU;RuntimeIdentifier=win-x64;SelfContained=true;PublishReadyToRun=true;PublishDir=$([System.IO.Path]::GetFullPath('$(PublishDir)'))renderhost\"
+             RemoveProperties="TargetFramework;WindowsAppSDKSelfContained" />
+  </Target>
+
+</Project>

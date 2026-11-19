@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="XDesigner.App.Controls.DesignSurface"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsTabStop="True" UseSystemFocusVisuals="False" KeyDown="Surface_KeyDown">
+
+  <!-- Layers (§8.1): faux window chrome, rendered frame, adorners. -->
+  <Grid Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}">
+    <ScrollViewer x:Name="Scroller"
+                  HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollMode="Enabled" VerticalScrollMode="Enabled" ZoomMode="Disabled">
+      <Border x:Name="FrameHost" Margin="32" HorizontalAlignment="Center" VerticalAlignment="Center"
+              BorderThickness="1" BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+              Visibility="Collapsed">
+        <StackPanel>
+          <!-- Avalonia doesn't draw native window decorations headless, so a Window gets a stand-in title bar. -->
+          <Grid x:Name="TitleBar" Height="32" Padding="10,0,0,0" PointerPressed="TitleBar_PointerPressed" DoubleTapped="TitleBar_DoubleTapped"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <FontIcon Glyph="&#xE737;" FontSize="12" Margin="0,0,8,0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="TitleText" Grid.Column="1" VerticalAlignment="Center" FontSize="12" TextTrimming="CharacterEllipsis" />
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+              <FontIcon Glyph="&#xE921;" FontSize="10" Width="46" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+              <FontIcon Glyph="&#xE922;" FontSize="10" Width="46" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+              <FontIcon Glyph="&#xE8BB;" FontSize="10" Width="46" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+          </Grid>
+          <!-- Frame + adorner layer (hover, selection, handles); the layer takes all pointer input (§8.3). -->
+          <Grid>
+            <Image x:Name="FrameImage" Stretch="Fill" />
+            <Canvas x:Name="AdornerLayer" Background="Transparent" AllowDrop="True"
+                    PointerMoved="AdornerLayer_PointerMoved" PointerExited="AdornerLayer_PointerExited"
+                    PointerPressed="AdornerLayer_PointerPressed" PointerReleased="AdornerLayer_PointerReleased"
+                    PointerCaptureLost="AdornerLayer_PointerCaptureLost" DoubleTapped="AdornerLayer_DoubleTapped" RightTapped="AdornerLayer_RightTapped"
+                    DragOver="AdornerLayer_DragOver" DragLeave="AdornerLayer_DragLeave" Drop="AdornerLayer_Drop" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </ScrollViewer>
+
+    <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+      <ProgressRing x:Name="StartupRing" IsActive="True" Width="32" Height="32" />
+      <TextBlock x:Name="EmptyText" Text="Starting the renderer…" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                 HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="520" />
+    </StackPanel>
+
+    <ProgressBar x:Name="BusyBar" IsIndeterminate="True" VerticalAlignment="Top" Visibility="Collapsed" />
+
+    <InfoBar x:Name="ErrorBar" Severity="Error" IsClosable="False" VerticalAlignment="Top" Margin="12" Title="Can't show the latest version">
+      <InfoBar.ActionButton>
+        <Button x:Name="RetryButton" Content="Retry" Click="RetryButton_Click" />
+      </InfoBar.ActionButton>
+      <!-- §8.5: the change that broke the preview can be taken back from here. -->
+      <Button x:Name="UndoLastButton" Content="Undo last change" Click="UndoLastButton_Click" Margin="0,0,0,12" />
+    </InfoBar>
+  </Grid>
+</UserControl>

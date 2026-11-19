@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    Release publishes carry no debug symbols: packages such as SkiaSharp ship native .pdb files of 100 MB, and the
+    installer has no use for them.
+  -->
+  <Target Name="XDesignerDropPublishedSymbols" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(Configuration)' == 'Release'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+</Project>

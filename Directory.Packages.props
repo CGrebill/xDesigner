@@ -1,0 +1,39 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <AvaloniaVersion>12.1.6</AvaloniaVersion>
+  </PropertyGroup>
+  <ItemGroup Label="Avalonia (RenderHost, samples)">
+    <PackageVersion Include="Avalonia" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Avalonia.Headless" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Avalonia.Skia" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="$(AvaloniaVersion)" />
+  </ItemGroup>
+  <ItemGroup Label="Shared infrastructure">
+    <PackageVersion Include="StreamJsonRpc" Version="2.26.150" />
+    <!-- 2.5.x, not 3.x: StreamJsonRpc's MessagePackFormatter is built against MessagePack 2.5. -->
+    <PackageVersion Include="MessagePack" Version="2.5.307" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.12.0" />
+  </ItemGroup>
+  <ItemGroup Label="WinUI 3 app">
+    <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.7.0" />
+    <!-- Components of the metapackage the app doesn't use; referenced only to exclude them (XDesigner.App.csproj). -->
+    <PackageVersion Include="Microsoft.WindowsAppSDK.AI" Version="2.7.0" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.ML" Version="2.7.0" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Search" Version="2.7.0" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Widgets" Version="2.7.0" />
+    <PackageVersion Include="Microsoft.Windows.AI.MachineLearning" Version="2.5.96" />
+    <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.2.251219" />
+  </ItemGroup>
+  <ItemGroup Label="Tests">
+    <PackageVersion Include="xunit.v3" Version="4.0.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
+  </ItemGroup>
+</Project>

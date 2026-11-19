@@ -1,0 +1,35 @@
+name: Bug report
+description: Something in xDesigner doesn't work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: If you can, attach or paste a small .axaml file that shows the problem.
+  - type: input
+    id: version
+    attributes:
+      label: xDesigner version
+      description: Help › About xDesigner.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 24H2"
+  - type: textarea
+    id: log
+    attributes:
+      label: Error details
+      description: If xDesigner reported an error, paste the Output panel lines or the end of errors.log (Help › Open the settings and error log folder).
+      render: text

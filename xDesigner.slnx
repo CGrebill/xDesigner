@@ -1,0 +1,39 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path="CHANGELOG.md" />
+    <File Path="CONTRIBUTING.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Build.targets" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="LICENSE.md" />
+    <File Path="README.md" />
+    <File Path="SECURITY.md" />
+    <File Path="THIRD-PARTY-NOTICES.md" />
+  </Folder>
+  <Folder Name="/docs/">
+    <File Path="docs/ARCHITECTURE.md" />
+    <File Path="docs/user-guide.md" />
+  </Folder>
+  <Folder Name="/build/">
+    <File Path="build/publish.ps1" />
+    <File Path="installer/xDesigner.iss" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/SampleAvaloniaApp/SampleAvaloniaApp.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/XDesigner.App/XDesigner.App.csproj">
+      <!-- WinUI 3 has no AnyCPU build; "Any CPU" solution builds map it to x64. -->
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/XDesigner.Core/XDesigner.Core.csproj" />
+    <Project Path="src/XDesigner.Protocol/XDesigner.Protocol.csproj" />
+    <Project Path="src/XDesigner.RenderHost/XDesigner.RenderHost.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/XDesigner.Core.Tests/XDesigner.Core.Tests.csproj" />
+    <Project Path="tests/XDesigner.RenderHost.Tests/XDesigner.RenderHost.Tests.csproj" />
+  </Folder>
+</Solution>

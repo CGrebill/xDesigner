@@ -1,0 +1,11 @@
+name: Idea or feature request
+description: Suggest something xDesigner could do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like xDesigner to do?
+      description: Describe what you're trying to achieve, not only the solution you have in mind.
+    validations:
+      required: true

@@ -1,0 +1,34 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+dist/
+*.binlog
+
+# IDE and editor files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.swp
+
+# Test and diagnostics output
+TestResults/
+*.trx
+coverage*/
+*.log
+*.dmp
+
+# Packaging output
+*.nupkg
+AppPackages/
+BundleArtifacts/
+*.msix
+*.appx
+
+# Operating system files
+Thumbs.db
+Desktop.ini
+.DS_Store

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>XDesigner.Core</RootNamespace>
+    <Description>All editing logic for the designer: XAML document model, commands and undo, placement, naming, code-behind generation, projects. References neither Avalonia nor WinUI.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\XDesigner.Protocol\XDesigner.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Toolbox/toolbox.json" LogicalName="XDesigner.Core.Toolbox.toolbox.json" />
+    <!-- New project / new item templates (§11.4, §11.5): text with $tokens$, not part of this project's build. -->
+    <Compile Remove="Templates/**" />
+    <None Remove="Templates/**" />
+    <EmbeddedResource Include="Templates/**" LogicalName="XDesigner.Core.Templates/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="XDesigner.Core.Tests" />
+  </ItemGroup>
+
+</Project>

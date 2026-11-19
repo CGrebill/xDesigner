@@ -1,0 +1,18 @@
+# Text files are stored with LF and checked out with the platform's line endings.
+* text=auto
+
+# Windows-only files always use CRLF.
+*.ps1 text eol=crlf
+*.iss text eol=crlf
+*.sln text eol=crlf
+*.slnx text eol=crlf
+
+# Binary files.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.dll binary
+*.exe binary

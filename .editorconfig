@@ -1,0 +1,30 @@
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+charset = utf-8
+
+[*.{json,xml,props,targets,csproj,slnx,axaml,xaml,yml,yaml,manifest}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_using_directive_placement = outside_namespace
+dotnet_sort_system_directives_first = true
+csharp_style_var_for_built_in_types = true
+csharp_style_var_when_type_is_apparent = true
+
+# Analyzer rules turned off on purpose (everything else from AnalysisLevel latest-recommended applies):
+# CA1707 - underscores are how WinUI names event handlers (Save_Click) and how the tests name cases (Method_Does_Thing).
+dotnet_diagnostic.CA1707.severity = none
+# CA1720 - ValueKind members are named after the .NET types they describe (String, Double, Object), on purpose.
+dotnet_diagnostic.CA1720.severity = none
+# CA1859 - read-only interfaces in signatures are a deliberate API choice; the gain from concrete types is negligible here.
+dotnet_diagnostic.CA1859.severity = suggestion
