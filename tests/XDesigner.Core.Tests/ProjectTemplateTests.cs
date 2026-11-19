@@ -111,11 +111,14 @@ public sealed class ProjectTemplateTests : IDisposable
     }
 
     /// <summary>A new project builds as created. Needs the SDK and the Avalonia packages (cached or online).</summary>
-    [Fact]
+    [Theory]
+    [InlineData(Core.Frameworks.FrameworkId.Avalonia12)]
+    [InlineData(Core.Frameworks.FrameworkId.Avalonia11)]
     [Trait("Category", "Slow")]
-    public async Task CreatedApp_Builds()
+    public async Task CreatedApp_Builds(Core.Frameworks.FrameworkId framework)
     {
-        var project = ProjectTemplates.CreateApp(_dir, "HelloAvalonia", "Hello Avalonia");
+        var profile = Core.Frameworks.FrameworkProfile.For(framework);
+        var project = ProjectTemplates.CreateApp(_dir, "HelloAvalonia", "Hello Avalonia", profile);
         var info = await ProjectReader.ReadAsync(project, TestContext.Current.CancellationToken);
         ProjectTemplates.CreateItem(info, Path.Combine(info.Directory, "Views"), "SidePanel", ItemKind.UserControl);
 
@@ -124,6 +127,30 @@ public sealed class ProjectTemplateTests : IDisposable
         Assert.True(result.Succeeded, string.Join(Environment.NewLine, result.Errors));
         Assert.Empty(result.Warnings);
         Assert.True(File.Exists(info.TargetPath));
-        Assert.Equal(12, ProjectReader.AvaloniaVersionOf(info.TargetPath)?.Major);
+        Assert.Equal(profile, info.DetectFramework().Profile);
+        Assert.Equal(profile, Core.Frameworks.FrameworkDetector.FromProjectFile(project).Profile); // before a build too
+    }
+
+    [Fact]
+    public void TemplateVersions_MatchTheRenderHostsPackages()
+    {
+        var props = System.Xml.Linq.XDocument.Load(Path.Combine(RepoRoot(), "Directory.Packages.props"));
+        string Property(string name) => props.Descendants(name).Single().Value;
+
+        Assert.Equal(Property("AvaloniaVersion"), Core.Frameworks.FrameworkProfile.Avalonia12.TemplateVersion);
+        Assert.Equal(Property("Avalonia11Version"), Core.Frameworks.FrameworkProfile.Avalonia11.TemplateVersion);
+    }
+
+    private static string RepoRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "xDesigner.slnx")))
+            {
+                return dir.FullName;
+            }
+        }
+
+        throw new InvalidOperationException("No xDesigner.slnx above the test output.");
     }
 }

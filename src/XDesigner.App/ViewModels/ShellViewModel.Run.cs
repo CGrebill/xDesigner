@@ -123,12 +123,12 @@ public sealed partial class ShellViewModel
     }
 
     /// <summary>File ▸ New project: writes the template, opens the project (which builds it) and its main window.</summary>
-    public async Task<string?> CreateProjectAsync(string parentDirectory, string name, string title)
+    public async Task<string?> CreateProjectAsync(string parentDirectory, string name, string title, Core.Frameworks.FrameworkProfile framework)
     {
         string projectPath;
         try
         {
-            projectPath = await Task.Run(() => ProjectTemplates.CreateApp(parentDirectory, name, title));
+            projectPath = await Task.Run(() => ProjectTemplates.CreateApp(parentDirectory, name, title, framework));
         }
         catch (Exception ex) when (ex is ProjectException or IOException or UnauthorizedAccessException)
         {

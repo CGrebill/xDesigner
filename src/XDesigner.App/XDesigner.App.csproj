@@ -86,34 +86,38 @@
   </ItemGroup>
 
   <!--
-    The render host is a separate .NET exe with its own Avalonia/Skia dependencies, so it is built on its own and
-    placed in a "renderhost" subfolder next to the app, not referenced.
-    Build: its (framework-dependent) build output is copied into the app's output folder. Platform=AnyCPU matches how
-    a solution build builds it, so MSBuild reuses that build instead of running a second, conflicting one.
-    Publish: it is published self-contained and precompiled into the publish folder.
+    The render hosts are separate .NET exes, one per framework version, each with its own UI framework dependencies, so
+    they are built on their own and placed in "renderhosts\{folder}" next to the app (FrameworkProfile.HostFolder), not
+    referenced.
+    Build: each host's (framework-dependent) build output is copied into the app's output folder. Platform=AnyCPU matches
+    how a solution build builds it, so MSBuild reuses that build instead of running a second, conflicting one.
+    Publish: each host is published self-contained and precompiled into the publish folder.
   -->
-  <PropertyGroup>
-    <RenderHostProject>..\XDesigner.RenderHost\XDesigner.RenderHost.csproj</RenderHostProject>
-  </PropertyGroup>
-  <Target Name="CopyRenderHost" AfterTargets="Build">
-    <MSBuild Projects="$(RenderHostProject)" Targets="Build"
+  <ItemGroup>
+    <RenderHostProject Include="..\XDesigner.RenderHost.Avalonia\XDesigner.RenderHost.Avalonia12.csproj" Folder="avalonia12" />
+    <RenderHostProject Include="..\XDesigner.RenderHost.Avalonia11\XDesigner.RenderHost.Avalonia11.csproj" Folder="avalonia11" />
+  </ItemGroup>
+  <!-- Batched: runs once per render host (Outputs names each one). -->
+  <Target Name="CopyRenderHosts" AfterTargets="Build" Outputs="%(RenderHostProject.Identity)">
+    <MSBuild Projects="@(RenderHostProject)" Targets="Build"
              Properties="Configuration=$(Configuration);Platform=AnyCPU"
              RemoveProperties="RuntimeIdentifier;SelfContained;TargetFramework;WindowsAppSDKSelfContained;PublishReadyToRun">
       <Output TaskParameter="TargetOutputs" ItemName="_RenderHostTargetPath" />
     </MSBuild>
     <PropertyGroup>
       <_RenderHostOutDir>@(_RenderHostTargetPath->'%(RootDir)%(Directory)')</_RenderHostOutDir>
+      <_RenderHostFolder>%(RenderHostProject.Folder)</_RenderHostFolder>
     </PropertyGroup>
     <ItemGroup>
       <_RenderHostFiles Include="$(_RenderHostOutDir)**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(_RenderHostFiles)"
-          DestinationFiles="@(_RenderHostFiles->'$(OutDir)renderhost\%(RecursiveDir)%(Filename)%(Extension)')"
+          DestinationFiles="@(_RenderHostFiles->'$(OutDir)renderhosts\$(_RenderHostFolder)\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
-  <Target Name="PublishRenderHost" AfterTargets="Publish">
-    <MSBuild Projects="$(RenderHostProject)" Targets="Publish"
-             Properties="Configuration=$(Configuration);Platform=AnyCPU;RuntimeIdentifier=win-x64;SelfContained=true;PublishReadyToRun=true;PublishDir=$([System.IO.Path]::GetFullPath('$(PublishDir)'))renderhost\"
+  <Target Name="PublishRenderHosts" AfterTargets="Publish" Outputs="%(RenderHostProject.Identity)">
+    <MSBuild Projects="@(RenderHostProject)" Targets="Publish"
+             Properties="Configuration=$(Configuration);Platform=AnyCPU;RuntimeIdentifier=win-x64;SelfContained=true;PublishReadyToRun=true;PublishDir=$([System.IO.Path]::GetFullPath('$(PublishDir)'))renderhosts\%(RenderHostProject.Folder)\"
              RemoveProperties="TargetFramework;WindowsAppSDKSelfContained" />
   </Target>
 

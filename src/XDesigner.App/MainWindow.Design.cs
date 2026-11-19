@@ -18,7 +18,7 @@ public sealed partial class MainWindow : IDesignCommandHost
 
     async Task IDesignCommandHost.EditItemsAsync(DocumentViewModel document, int id)
     {
-        if (document.Xaml.FindById(id) is not { } node || ItemsEditing.KindOf(document.Catalog.Resolve(node)) is not { } kind)
+        if (document.Xaml.FindById(id) is not { } node || ItemsEditing.KindOf(document.Catalog, document.Catalog.Resolve(node)) is not { } kind)
         {
             return;
         }

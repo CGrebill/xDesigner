@@ -29,11 +29,12 @@ public sealed partial class DesignerActions
         else
         {
             var element = root.Element;
-            var designPrefix = element.GetPrefixOfNamespace(XamlNamespaces.Design);
+            var d = _document.Profile.DesignNamespace;
+            var designPrefix = element.GetPrefixOfNamespace(d);
             if (designPrefix is null)
             {
                 designPrefix = "d";
-                commands.Add(new SetAttributeCommand(root.Id, XNamespace.Xmlns + designPrefix, XamlNamespaces.Design));
+                commands.Add(new SetAttributeCommand(root.Id, XNamespace.Xmlns + designPrefix, d.NamespaceName));
             }
 
             var mcPrefix = element.GetPrefixOfNamespace(XamlNamespaces.MarkupCompatibility);
@@ -51,7 +52,6 @@ public sealed partial class DesignerActions
                 commands.Add(new SetAttributeCommand(root.Id, mc + "Ignorable", string.Join(' ', ignorable)));
             }
 
-            XNamespace d = XamlNamespaces.Design;
             Add(commands, root, d + "DesignWidth", w);
             Add(commands, root, d + "DesignHeight", h);
         }

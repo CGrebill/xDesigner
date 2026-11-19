@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The sample app on Avalonia 11, for the Avalonia 11 render host's tests. Same code as ..\SampleAvaloniaApp, and the
+    same assembly name and namespace, so the shared tests expect the same types.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>SampleAvaloniaApp</AssemblyName>
+    <RootNamespace>SampleAvaloniaApp</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <Description>Sample Avalonia 11 app used to test the designer: a Window, a UserControl and a custom drawn control.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" VersionOverride="$(Avalonia11Version)" />
+    <PackageReference Include="Avalonia.Desktop" VersionOverride="$(Avalonia11Version)" />
+    <PackageReference Include="Avalonia.Themes.Fluent" VersionOverride="$(Avalonia11Version)" />
+    <PackageReference Include="Avalonia.Fonts.Inter" VersionOverride="$(Avalonia11Version)" />
+  </ItemGroup>
+
+</Project>

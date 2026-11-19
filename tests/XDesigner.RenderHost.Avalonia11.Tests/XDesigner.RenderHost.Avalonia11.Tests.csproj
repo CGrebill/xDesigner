@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The render host tests (..\XDesigner.RenderHost.Tests), run against the Avalonia 11 host and an Avalonia 11 build of
+    the sample app. The test sources are shared; AVALONIA11 selects the paths and versions they expect (TestPaths).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>XDesigner.RenderHost.Tests</RootNamespace>
+    <DefineConstants>$(DefineConstants);AVALONIA11</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <_TestSource>..\XDesigner.RenderHost.Tests\</_TestSource>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(_TestSource)**\*.cs" Exclude="$(_TestSource)bin\**;$(_TestSource)obj\**" LinkBase="Shared" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\XDesigner.RenderHost.Avalonia11\XDesigner.RenderHost.Avalonia11.csproj" />
+    <ProjectReference Include="..\..\src\XDesigner.Core\XDesigner.Core.csproj" />
+    <!-- Built first so its assembly can be loaded like a user project; not referenced at compile time. -->
+    <ProjectReference Include="..\..\samples\SampleAvalonia11App\SampleAvalonia11App.csproj"
+                      ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

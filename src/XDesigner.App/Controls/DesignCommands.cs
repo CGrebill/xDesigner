@@ -63,7 +63,7 @@ public static class DesignCommands
         var wrap = new MenuFlyoutSubItem { Text = targets.Count > 1 ? $"Wrap {targets.Count} controls in" : "Wrap in", IsEnabled = !isRoot };
         foreach (var (name, glyph) in Wrappers)
         {
-            if (doc.Catalog.Find($"Avalonia.Controls.{name}") is { } wrapperType)
+            if (doc.Catalog.Find(doc.Catalog.Profile.BuiltIn(name)) is { } wrapperType)
             {
                 var item = new MenuFlyoutItem { Text = name, Icon = new FontIcon { Glyph = glyph } };
                 item.Click += (_, _) =>
@@ -85,8 +85,8 @@ public static class DesignCommands
 
         menu.Items.Add(wrap);
 
-        var itemsKind = ItemsEditing.KindOf(type);
-        var isGrid = type?.DerivesFrom("Avalonia.Controls.Grid") == true;
+        var itemsKind = ItemsEditing.KindOf(doc.Catalog, type);
+        var isGrid = doc.Catalog.IsA(type, "Grid");
         if (itemsKind is not null || isGrid)
         {
             menu.Items.Add(new MenuFlyoutSeparator());

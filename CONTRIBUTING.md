@@ -29,9 +29,10 @@ The release installer is made by `build\publish.ps1` (needs [Inno Setup 6](https
 | `src/XDesigner.App` | The WinUI 3 designer (unpackaged exe): shell, design surface, panels, dialogs |
 | `src/XDesigner.Core` | Editing logic without any UI: XAML document model, undo, placement, snapping, code-behind writer, projects |
 | `src/XDesigner.Protocol` | The RPC contract and data types shared by the app and the render host |
-| `src/XDesigner.RenderHost` | The out-of-process Avalonia 12 headless renderer |
-| `tests/` | xUnit v3 tests for Core and for the render host (the latter starts the real renderer) |
-| `samples/SampleAvaloniaApp` | An Avalonia 12 app with custom controls, used by the tests |
+| `src/XDesigner.RenderHost.Avalonia` | The out-of-process Avalonia headless renderer: its source, and the project that builds it against Avalonia 12 |
+| `src/XDesigner.RenderHost.Avalonia11` | Builds the same renderer source against Avalonia 11 (`AVALONIA11`) |
+| `tests/` | xUnit v3 tests for Core and for the render hosts (they start the real renderer); the Avalonia 11 host's tests share the Avalonia 12 host's sources |
+| `samples/SampleAvaloniaApp`, `samples/SampleAvalonia11App` | The same app with custom controls on Avalonia 12 and 11, used by the tests |
 | `installer/`, `build/` | Inno Setup script and the release build script |
 | `tools/` | The icon generator and the third-party notices generator |
 | `docs/` | User guide and architecture |

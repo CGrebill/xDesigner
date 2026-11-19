@@ -102,12 +102,14 @@ public class PropertyMetadataTests(RenderHostFixture host)
     public void Format_UsesXamlText(double value, string expected) => Assert.Equal(expected, ValueReader.Format(value));
 
     [Fact]
-    public void Format_Thickness_Collapses()
+    public async Task Format_Thickness_Collapses()
     {
         Assert.Equal("8", ValueReader.Format(new Avalonia.Thickness(8)));
         Assert.Equal("8,4", ValueReader.Format(new Avalonia.Thickness(8, 4)));
         Assert.Equal("1,2,3,4", ValueReader.Format(new Avalonia.Thickness(1, 2, 3, 4)));
         Assert.Equal("#FF0000", ValueReader.Format(Avalonia.Media.Colors.Red));
-        Assert.Equal("#80FF0000", ValueReader.Format(new Avalonia.Media.SolidColorBrush(Avalonia.Media.Colors.Red, 0.5)));
+
+        // On the UI thread: in Avalonia 11 a brush is an AvaloniaObject, which may only be created there.
+        Assert.Equal("#80FF0000", await host.Runtime.InvokeAsync(() => ValueReader.Format(new Avalonia.Media.SolidColorBrush(Avalonia.Media.Colors.Red, 0.5))));
     }
 }

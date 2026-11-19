@@ -11,13 +11,15 @@ $nuget = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:
 # Packages that are only used while building, or whose files are kept out of the app (see XDesigner.App.csproj).
 $notShipped = '^(Avalonia\.BuildServices|Microsoft\.CodeAnalysis\.Analyzers|Microsoft\.Windows\.SDK\.BuildTools.*|Microsoft\.Windows\.AI\.MachineLearning|Microsoft\.WindowsAppSDK\.(AI|ML|Search|Widgets)|.*\.NativeAssets\.(Linux|macOS|WebAssembly))$'
 
+# The app and every render host. Keyed by name and version: the Avalonia 11 and 12 hosts ship different versions.
 $packages = @{}
-foreach ($assets in "src\XDesigner.App\obj\project.assets.json", "src\XDesigner.RenderHost\obj\project.assets.json") {
+$assetsFiles = "src\XDesigner.App\obj\project.assets.json", "src\XDesigner.RenderHost.Avalonia\obj\project.assets.json", "src\XDesigner.RenderHost.Avalonia11\obj\project.assets.json"
+foreach ($assets in $assetsFiles) {
     $json = Get-Content (Join-Path $root $assets) -Raw | ConvertFrom-Json
     foreach ($library in $json.libraries.PSObject.Properties) {
         if ($library.Value.type -ne "package") { continue }
         $name, $version = $library.Name -split '/'
-        if ($name -notmatch $notShipped) { $packages[$name] = $version }
+        if ($name -notmatch $notShipped) { $packages["$name/$version"] = @($name, $version) }
     }
 }
 
@@ -29,7 +31,7 @@ function Read-Nuspec($name, $version) {
     [pscustomobject]@{ Name = $name; Version = $version; License = $license; Url = ($meta.projectUrl -replace '\?utm_.*$', ''); Copyright = $meta.copyright; Folder = $folder }
 }
 
-$rows = $packages.GetEnumerator() | Sort-Object Name | ForEach-Object { Read-Nuspec $_.Key $_.Value }
+$rows = $packages.Values | Sort-Object { $_[0] }, { [version]($_[1] -replace '-.*$', '') } | ForEach-Object { Read-Nuspec $_[0] $_[1] }
 $nl = "`r`n"
 $sb = [System.Text.StringBuilder]::new()
 [void]$sb.Append("# Third-party notices$nl$nl")
@@ -43,7 +45,7 @@ foreach ($r in $rows) { [void]$sb.Append("| $($r.Name) | $($r.Version) | $($r.Li
 [void]$sb.Append("$nl## MIT-licensed components$nl$nl")
 [void]$sb.Append("The .NET runtime, C#/WinRT and the packages marked MIT above are licensed under the MIT License, with these copyright notices:$nl$nl")
 [void]$sb.Append("- .NET runtime, C#/WinRT: Copyright (c) .NET Foundation and Contributors / Microsoft Corporation$nl")
-foreach ($r in $rows | Where-Object License -eq "MIT") {
+foreach ($r in $rows | Where-Object License -eq "MIT" | Sort-Object Name -Unique) {
     $copyright = if ($r.Copyright) { $r.Copyright.Trim() } else { "see $($r.Url)" }
     [void]$sb.Append("- $($r.Name): $copyright$nl")
 }
@@ -85,8 +87,13 @@ foreach ($r in $rows | Where-Object License -ne "MIT") {
 $inter = Join-Path $PSScriptRoot "licenses\Inter-OFL.txt"
 Add-LicenseFile "Inter font - SIL Open Font License 1.1" $inter
 
-$skiaNotices = Join-Path $nuget ("skiasharp.nativeassets.win32\{0}\THIRD-PARTY-NOTICES.txt" -f $packages["SkiaSharp.NativeAssets.Win32"])
-Add-LicenseFile "Skia and HarfBuzz native libraries (SkiaSharp / HarfBuzzSharp) - third-party notices" $skiaNotices
+# One per SkiaSharp version shipped (the Avalonia 11 and 12 render hosts use different ones), where the package has the file.
+foreach ($skia in $packages.Values | Where-Object { $_[0] -eq "SkiaSharp.NativeAssets.Win32" } | Sort-Object { $_[1] }) {
+    $skiaNotices = Join-Path $nuget ("skiasharp.nativeassets.win32\{0}\THIRD-PARTY-NOTICES.txt" -f $skia[1])
+    if (Test-Path $skiaNotices) {
+        Add-LicenseFile "Skia and HarfBuzz native libraries (SkiaSharp $($skia[1]) / HarfBuzzSharp) - third-party notices" $skiaNotices
+    }
+}
 
 [System.IO.File]::WriteAllText($OutPath, $sb.ToString(), [System.Text.UTF8Encoding]::new($false))
 "Wrote $OutPath ($($rows.Count) packages)"

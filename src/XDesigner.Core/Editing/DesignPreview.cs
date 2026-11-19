@@ -81,15 +81,15 @@ public sealed class DesignPreview
         // The root can't be hidden: there would be nothing left to click.
         foreach (var id in _hidden.Where(id => document.FindById(id) is { Parent: not null }))
         {
-            Set(id, "IsVisible", "False");
+            Set(id, document.Profile.HiddenAttribute.Attribute, document.Profile.HiddenAttribute.Value);
         }
 
         return result.ToDictionary(p => p.Key, p => (IReadOnlyDictionary<string, string>)p.Value);
     }
 
     private static bool IsTabItem(ElementNode node, ControlCatalog catalog) =>
-        catalog.Resolve(node)?.DerivesFrom("Avalonia.Controls.TabItem") ?? node.TypeName == "TabItem";
+        catalog.Resolve(node) is { } type ? catalog.IsA(type, "TabItem") : node.TypeName == "TabItem";
 
     private static bool IsTabControl(ElementNode node, ControlCatalog catalog) =>
-        catalog.Resolve(node)?.DerivesFrom("Avalonia.Controls.TabControl") ?? node.TypeName == "TabControl";
+        catalog.Resolve(node) is { } type ? catalog.IsA(type, "TabControl") : node.TypeName == "TabControl";
 }

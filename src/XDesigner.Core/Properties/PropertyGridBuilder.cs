@@ -92,7 +92,7 @@ public static class PropertyGridBuilder
             var parent = node.Parent is { } p ? catalog.Resolve(p) : null;
             var props = (type is null ? null : propertiesOf(type.FullName)) ?? [];
             perNode.Add((node, type, props
-                .Where(pr => pr.Key != NameKey && (PropertyCategories.AppliesTo(pr, parent) || IsWritten(node.Element, pr.Key)))
+                .Where(pr => pr.Key != NameKey && (PropertyCategories.AppliesTo(pr, parent, catalog) || IsWritten(node.Element, pr.Key)))
                 .GroupBy(pr => pr.Key)
                 .ToDictionary(g => g.Key, g => g.First())));
         }

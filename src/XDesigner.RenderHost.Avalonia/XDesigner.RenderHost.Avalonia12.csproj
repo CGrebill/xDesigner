@@ -1,8 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!--
+    The Avalonia render host (§14). This folder holds its source; this project builds it against Avalonia 12, and
+    ..\XDesigner.RenderHost.Avalonia11 builds the same source against Avalonia 11 (one process can't load two Avalonia
+    versions, so each major version has its own host).
+  -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>XDesigner.RenderHost.Avalonia12</AssemblyName>
     <RootNamespace>XDesigner.RenderHost</RootNamespace>
     <!-- Skia/HarfBuzz native assets must be present next to the exe. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

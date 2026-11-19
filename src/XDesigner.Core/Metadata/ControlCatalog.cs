@@ -13,13 +13,15 @@ public sealed class ControlCatalog
     private readonly Dictionary<string, ControlTypeInfo> _byFullName;
     private readonly Dictionary<(string Ns, string Name), ControlTypeInfo> _byXaml = [];
 
-    public ControlCatalog(IEnumerable<ControlTypeInfo> types)
+    /// <param name="profile">The framework whose render host reported <paramref name="types"/>; Avalonia 12 when omitted.</param>
+    public ControlCatalog(IEnumerable<ControlTypeInfo> types, Frameworks.FrameworkProfile? profile = null)
     {
         All = types.ToList();
+        Profile = profile ?? Frameworks.FrameworkProfile.Avalonia12;
         _byFullName = All.GroupBy(t => t.FullName).ToDictionary(g => g.Key, g => g.First());
 
-        // Several CLR namespaces map to the Avalonia XML namespace; prefer creatable types, then Avalonia.Controls itself.
-        foreach (var type in All.OrderByDescending(t => t.IsCreatable).ThenByDescending(t => t.ClrNamespace == "Avalonia.Controls"))
+        // Several CLR namespaces map to the framework's XML namespace; prefer creatable types, then its main controls namespace.
+        foreach (var type in All.OrderByDescending(t => t.IsCreatable).ThenByDescending(t => t.ClrNamespace == Profile.ControlsNamespace))
         {
             _byXaml.TryAdd((type.XmlNamespace, type.Name), type);
             _byXaml.TryAdd(("using:" + type.ClrNamespace, type.Name), type);
@@ -27,6 +29,12 @@ public sealed class ControlCatalog
     }
 
     public static ControlCatalog Empty { get; } = new([]);
+
+    /// <summary>The framework these types belong to.</summary>
+    public Frameworks.FrameworkProfile Profile { get; }
+
+    /// <summary>Whether <paramref name="type"/> is, or derives from, the framework's built-in control <paramref name="name"/>.</summary>
+    public bool IsA(ControlTypeInfo? type, string name) => type?.DerivesFrom(Profile.BuiltIn(name)) == true;
 
     public IReadOnlyList<ControlTypeInfo> All { get; }
 

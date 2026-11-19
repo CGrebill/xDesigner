@@ -26,6 +26,7 @@ public sealed partial class MainWindow
         if (settings.ToolboxWidth is > 100 and < 1000 and var toolbox)
         {
             ToolboxColumn.Width = new GridLength(toolbox);
+            _toolboxWidth = toolbox;
         }
 
         if (settings.SidePaneWidth is > 150 and < 1200 and var side)
@@ -36,7 +37,12 @@ public sealed partial class MainWindow
         if (settings.OutputHeight is > 40 and < 1200 and var output)
         {
             OutputRow.Height = new GridLength(output);
+            _outputHeight = output;
         }
+
+        ShowToolboxMenuItem.IsChecked = settings.ShowToolbox;
+        ShowOutputMenuItem.IsChecked = settings.ShowOutput;
+        ApplyPaneVisibility();
 
         Closed += (_, _) => SavePaneSizes();
         ViewModel.RecentChanged += (_, _) => RebuildRecent();
@@ -54,10 +60,64 @@ public sealed partial class MainWindow
     private void SavePaneSizes()
     {
         var settings = ViewModel.Settings;
-        settings.ToolboxWidth = ToolboxColumn.ActualWidth;
+        RememberPaneSizes();
+        settings.ToolboxWidth = _toolboxWidth;
         settings.SidePaneWidth = SideColumn.ActualWidth;
-        settings.OutputHeight = OutputRow.ActualHeight;
+        settings.OutputHeight = _outputHeight;
+        settings.ShowToolbox = ShowToolboxMenuItem.IsChecked;
+        settings.ShowOutput = ShowOutputMenuItem.IsChecked;
         ViewModel.SaveSettings();
+    }
+
+    // Sizes of the panes to restore when they're shown again (a hidden pane's column or row is 0).
+    private double _toolboxWidth = 220;
+    private double _outputHeight = 160;
+
+    private void RememberPaneSizes()
+    {
+        if (ToolboxPaneBorder.Visibility == Visibility.Visible && ToolboxColumn.ActualWidth > 0)
+        {
+            _toolboxWidth = ToolboxColumn.ActualWidth;
+        }
+
+        if (OutputPaneBorder.Visibility == Visibility.Visible && OutputRow.ActualHeight > 0)
+        {
+            _outputHeight = OutputRow.ActualHeight;
+        }
+    }
+
+    /// <summary>View ▸ Toolbox / Output: shows or hides a pane, keeping its size for when it comes back.</summary>
+    private void ApplyPaneVisibility()
+    {
+        RememberPaneSizes();
+
+        var toolbox = ShowToolboxMenuItem.IsChecked;
+        ToolboxColumn.MinWidth = toolbox ? 140 : 0;
+        ToolboxColumn.Width = new GridLength(toolbox ? _toolboxWidth : 0);
+        ToolboxPaneBorder.Visibility = ToolboxSplitter.Visibility = toolbox ? Visibility.Visible : Visibility.Collapsed;
+
+        var output = ShowOutputMenuItem.IsChecked;
+        OutputRow.Height = new GridLength(output ? _outputHeight : 0);
+        OutputPaneBorder.Visibility = OutputSplitter.Visibility = output ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void TogglePane_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyPaneVisibility();
+        SavePaneSizes();
+    }
+
+    private void ShowSolutionExplorer_Click(object sender, RoutedEventArgs e) => SideTabs.SelectedItem = SolutionTab;
+
+    private void ShowErrorList_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ShowOutputMenuItem.IsChecked)
+        {
+            ShowOutputMenuItem.IsChecked = true;
+            ApplyPaneVisibility();
+        }
+
+        OutputTabs.SelectedItem = ErrorsTab;
     }
 
     private void GridSnapToggle_Click(object sender, RoutedEventArgs e)

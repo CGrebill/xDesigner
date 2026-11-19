@@ -184,7 +184,7 @@ public class StructureTests
     {
         var (doc, undo, actions) = Open();
         var list = doc.FindById(Id(doc, "list"))!;
-        var kind = ItemsEditing.KindOf(Catalog.Resolve(list))!;
+        var kind = ItemsEditing.KindOf(Catalog, Catalog.Resolve(list))!;
         Assert.Equal("ListBoxItem", kind.ItemType);
 
         var drafts = ItemsEditing.Read(list, kind);
@@ -212,17 +212,17 @@ public class StructureTests
         var tabs = doc.AllNodes.Single(n => n.TypeName == "TabControl");
         var menu = doc.AllNodes.Single(n => n.TypeName == "Menu");
 
-        actions.SetItems(tabs.Id, [new ItemDraft(null, "General"), new ItemDraft(null, "Advanced")], ItemsEditing.KindOf(Catalog.Resolve(tabs))!);
+        actions.SetItems(tabs.Id, [new ItemDraft(null, "General"), new ItemDraft(null, "Advanced")], ItemsEditing.KindOf(Catalog, Catalog.Resolve(tabs))!);
         var file = new ItemDraft(null, "_File");
         file.Children.Add(new ItemDraft(null, "_Open"));
         file.Children.Add(new ItemDraft(null, "E_xit"));
-        actions.SetItems(menu.Id, [file], ItemsEditing.KindOf(Catalog.Resolve(menu))!);
+        actions.SetItems(menu.Id, [file], ItemsEditing.KindOf(Catalog, Catalog.Resolve(menu))!);
 
         var text = doc.ToXaml().Replace("\r", "");
         Assert.Contains("<TabControl>\n    <TabItem Header=\"General\">\n      <Grid />\n    </TabItem>\n    <TabItem Header=\"Advanced\">\n      <Grid />\n    </TabItem>\n  </TabControl>", text);
         Assert.Contains("<Menu>\n    <MenuItem Header=\"_File\">\n      <MenuItem Header=\"_Open\" />\n      <MenuItem Header=\"E_xit\" />\n    </MenuItem>\n  </Menu>", text);
 
-        var read = ItemsEditing.Read(doc.FindById(menu.Id)!, ItemsEditing.KindOf(Catalog.Resolve(menu))!);
+        var read = ItemsEditing.Read(doc.FindById(menu.Id)!, ItemsEditing.KindOf(Catalog, Catalog.Resolve(menu))!);
         Assert.Equal(["_Open", "E_xit"], read.Single().Children.Select(c => c.Text));
 
         undo.Undo();

@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Xml.Linq;
 using Avalonia;
 using Avalonia.Interactivity;
+using XDesigner.Protocol;
 using XDesigner.RenderHost.DesignTime;
 
 namespace XDesigner.RenderHost.Rendering;
@@ -38,6 +39,7 @@ internal sealed class RenderCopySanitizer(XamlTypeResolver resolver)
         }
 
         document.Root?.Attribute(XamlNs + "Class")?.Remove();
+        MapDesignIds(document);
 
         foreach (var element in document.Descendants().ToList())
         {
@@ -70,6 +72,31 @@ internal sealed class RenderCopySanitizer(XamlTypeResolver resolver)
         var root = document.Root!;
         var line = root is System.Xml.IXmlLineInfo info && info.HasLineInfo() ? info.LineNumber : 1;
         return new string('\n', Math.Max(0, line - 1)) + root.ToString(SaveOptions.DisableFormatting);
+    }
+
+    /// <summary>
+    /// The app marks design ids with a neutral namespace (<see cref="ProtocolInfo.DesignIdXmlNamespace"/>), since only the
+    /// host knows where its <see cref="DesignId"/> property lives (this assembly, whose name differs per Avalonia version).
+    /// </summary>
+    private static void MapDesignIds(XDocument document)
+    {
+        XNamespace marker = ProtocolInfo.DesignIdXmlNamespace;
+        XNamespace own = DesignId.XmlNamespace;
+        foreach (var element in document.Descendants())
+        {
+            foreach (var attribute in element.Attributes().ToList())
+            {
+                if (attribute.IsNamespaceDeclaration && attribute.Value == marker.NamespaceName)
+                {
+                    attribute.Value = own.NamespaceName;
+                }
+                else if (attribute.Name.Namespace == marker)
+                {
+                    attribute.Remove();
+                    element.SetAttributeValue(own + attribute.Name.LocalName, attribute.Value);
+                }
+            }
+        }
     }
 
     private bool IsEventAttribute(XElement element, Type elementType, XAttribute attribute)

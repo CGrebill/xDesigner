@@ -41,7 +41,11 @@ internal static class FramePng
                 new Vector(96 * result.Scale, 96 * result.Scale),
                 result.PixelWidth * 4);
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+#if AVALONIA11
+            bitmap.Save(path); // Avalonia 11 always writes PNG here
+#else
             bitmap.Save(path, PngBitmapEncoderOptions.Default);
+#endif
         }
         finally
         {

@@ -1,6 +1,7 @@
 # xDesigner
 
-**A visual designer for [Avalonia UI](https://avaloniaui.net/) 12, in the spirit of the classic WinForms designer.**
+**A visual designer for [Avalonia UI](https://avaloniaui.net/) 11 and 12, in the spirit of the classic WinForms designer.**
+WinUI 3 and .NET MAUI are next.
 Drag controls onto a form, set their properties in a properties window, double-click a button to write its click
 handler, and press Run. You write only C#; xDesigner writes the XAML.
 
@@ -11,8 +12,11 @@ handler, and press Run. You write only C#; xDesigner writes the XAML.
 
 ## Features
 
-- **Real Avalonia rendering.** Forms are drawn by Avalonia 12 itself (in a separate process), with your app's theme,
-  fonts and custom controls, so what you see is what runs.
+- **Real Avalonia rendering.** Forms are drawn by Avalonia itself (in a separate process, by the same Avalonia version
+  your project uses: 11 or 12), with your app's theme, fonts and custom controls, so what you see is what runs.
+- **Whole solutions.** Open a `.sln` or `.slnx` and every project is there in **Solution Explorer**, each with its own
+  framework version (an Avalonia 11 and an Avalonia 12 project side by side work). Build errors are in the **Error
+  List**; double-click one to go to it.
 - **Toolbox** with the built-in Avalonia controls and the custom controls of your project.
 - **Drag-and-drop layout** that understands panels: Grid cells, Canvas positions, StackPanel and WrapPanel order,
   DockPanel edges. Move, resize, snap lines, grid snapping, multi-select, rubber band, nudge with the arrow keys,
@@ -48,8 +52,8 @@ stored for itself (`%LOCALAPPDATA%\xDesigner`: settings and the error log). Your
 
 ## Quick start
 
-1. **File › New project…** (Ctrl+Shift+N): pick a name and a folder. xDesigner creates an Avalonia 12 app, builds it
-   and opens its main window.
+1. **File › New project…** (Ctrl+Shift+N): pick Avalonia 12 or 11, a name and a folder. xDesigner creates the app,
+   builds it and opens its main window.
 2. Drag a **Button** and a **TextBlock** from the toolbox onto the window.
 3. Double-click the button. xDesigner adds `button1_Click` to `MainWindow.axaml.cs` and offers to open it in your
    editor. Write, for example, `textBlock1.Text = "Hello!";`.
@@ -76,9 +80,9 @@ The [user guide](docs/user-guide.md) covers everything else.
 ## What xDesigner doesn't do
 
 xDesigner is for designing forms visually. It doesn't author data bindings, styles, resources, control templates or
-animations; bindings and resources already in a file are kept and shown read-only. It designs Avalonia 12 desktop
-apps (Windows, macOS and Linux run them); projects for older Avalonia versions can't be opened. The designer itself
-runs on Windows only.
+animations; bindings and resources already in a file are kept and shown read-only. It designs Avalonia 11 (11.1 or
+later) and 12 desktop apps (Windows, macOS and Linux run them); WinUI 3 and .NET MAUI projects are recognised but can't
+be designed yet. The designer itself runs on Windows only.
 
 ## Build from source
 

@@ -43,13 +43,16 @@ public interface IRenderHost
 }
 
 /// <summary>What the host reports about itself after starting.</summary>
-/// <param name="ApplicationType">Full name of the Avalonia Application in use (the user's, or the designer's fallback).</param>
+/// <param name="FrameworkId">Which framework and major version it renders (<c>Avalonia12</c>), as the designer's profiles name it.</param>
+/// <param name="FrameworkVersion">The exact framework version it runs (<c>12.1.6</c>).</param>
+/// <param name="ApplicationType">Full name of the Application in use (the user's, or the designer's fallback).</param>
 /// <param name="BuilderSource">How the app was configured: <c>BuildAvaloniaApp</c>, <c>App type</c> or <c>DesignApp</c>.</param>
 /// <param name="UserAssemblyName">Name of the loaded user assembly, if any.</param>
 [MessagePackObject(keyAsPropertyName: true)]
 public sealed record HostInfo(
     int ProtocolVersion,
-    string AvaloniaVersion,
+    string FrameworkId,
+    string FrameworkVersion,
     string ApplicationType,
     string BuilderSource,
     bool IsDesignMode,

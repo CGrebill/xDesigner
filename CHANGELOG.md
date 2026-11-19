@@ -4,9 +4,25 @@ All notable changes to xDesigner are listed here. Versions follow [Semantic Vers
 
 ## [Unreleased]
 
-Fixes from a full code review of 1.0.0.
+### Added
+- **Avalonia 11.** Projects on Avalonia 11.1 or later can be designed, drawn by Avalonia 11 itself (a second renderer,
+  built from the same source against Avalonia 11.3). New project offers Avalonia 12 or 11.
+- **Whole solutions.** Opening a `.sln`/`.slnx` opens all its projects, each with its own framework version, so an
+  Avalonia 11 and an Avalonia 12 project can be designed side by side. Build builds the solution; Run starts the
+  startup project.
+- **Solution Explorer** (beside the Document Outline): projects with their framework, folders, XAML and C# files.
+  Double-click to design a XAML file or open any other file in your code editor; right-click to set the startup project
+  or show a file in File Explorer.
+- **Error List** in Output: the last build's errors and warnings; double-click to go to one.
+- **View › Toolbox / Output** hide or show those panes; **View › Solution Explorer** (Ctrl+Alt+L) and **Error List**.
+- The installer lets you choose which renderers to install.
+- WinUI 3 and .NET MAUI projects are recognised and explained (designing them comes in a later version).
 
-### Fixed
+### Changed
+- Render hosts live in `renderhosts\{framework}` next to the app (one per framework version); the render protocol is
+  version 6.
+
+### Fixed (from a full code review of 1.0.0)
 - A property value still being typed was applied to the wrong file when another file was opened or dropped on the
   window (and a pending handler name could create the method in the other file's code-behind).
 - Adding an image could delete content from the `.csproj` when other text shared the `</Project>` line (or the whole

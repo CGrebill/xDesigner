@@ -42,6 +42,19 @@ public sealed partial class MainWindow
         var location = new TextBox { Header = "Location", Text = _lastProjectsFolder ?? DefaultProjectsFolder, MinWidth = 360 };
         var browse = new Button { Content = "Browse…", VerticalAlignment = VerticalAlignment.Bottom };
         var title = new TextBox { Header = "Window title", PlaceholderText = "Same as the project name" };
+        var frameworks = ProjectTemplates.CreatableFrameworks;
+        var framework = new ComboBox
+        {
+            Header = "Framework",
+            ItemsSource = frameworks.Select(p => $"{p.DisplayName} ({p.TemplateVersion})").ToList(),
+            SelectedIndex = 0,
+            MinWidth = 220,
+        };
+        var description = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        void Describe() =>
+            description.Text = $"A desktop app for Windows, macOS and Linux ({frameworks[Math.Max(0, framework.SelectedIndex)].DisplayName}, .NET 10) with an empty main window.";
+        framework.SelectionChanged += (_, _) => Describe();
+        Describe();
         var where = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
         var problem = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = (Brush)Application.Current.Resources["NotifyErrorIcon"] };
 
@@ -55,20 +68,12 @@ public sealed partial class MainWindow
         var dialog = new ContentDialog
         {
             XamlRoot = Content.XamlRoot,
-            Title = "New Avalonia project",
+            Title = "New project",
             Content = new StackPanel
             {
                 Spacing = 12,
                 MinWidth = 440,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = "A desktop app for Windows, macOS and Linux (Avalonia " + ProjectTemplates.AvaloniaVersion + ", .NET 10) with an empty main window.",
-                        TextWrapping = TextWrapping.Wrap,
-                    },
-                    name, locationRow, title, where, problem,
-                },
+                Children = { framework, description, name, locationRow, title, where, problem },
             },
             PrimaryButtonText = "Create",
             CloseButtonText = "Cancel",
@@ -114,7 +119,7 @@ public sealed partial class MainWindow
 
         _lastProjectsFolder = location.Text.Trim();
         Directory.CreateDirectory(_lastProjectsFolder);
-        if (await ViewModel.CreateProjectAsync(_lastProjectsFolder, name.Text.Trim(), title.Text) is { } failed)
+        if (await ViewModel.CreateProjectAsync(_lastProjectsFolder, name.Text.Trim(), title.Text, frameworks[Math.Max(0, framework.SelectedIndex)]) is { } failed)
         {
             ShowNotification(NotifyKind.Error, $"Couldn't create the project: {failed}");
         }

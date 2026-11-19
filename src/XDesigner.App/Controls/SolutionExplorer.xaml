@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="XDesigner.App.Controls.SolutionExplorer"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:XDesigner.App.ViewModels">
+
+  <!-- Solution Explorer: the open solution's projects (each with its framework) and their XAML and C# files. -->
+  <Grid RowSpacing="4">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <TreeView x:Name="Tree" SelectionMode="Single" CanDragItems="False" CanReorderItems="False" AllowDrop="False"
+              KeyDown="Tree_KeyDown" RightTapped="Tree_RightTapped" Expanding="Tree_Expanding" Collapsed="Tree_Collapsed">
+      <TreeView.ItemTemplate>
+        <DataTemplate x:DataType="vm:SolutionNodeViewModel">
+          <TreeViewItem ItemsSource="{x:Bind Children}" IsExpanded="{x:Bind IsExpanded}" DoubleTapped="Item_DoubleTapped"
+                        AutomationProperties.Name="{x:Bind Label}" ToolTipService.ToolTip="{x:Bind Path}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <FontIcon Glyph="{x:Bind Glyph}" FontSize="14" />
+              <TextBlock Text="{x:Bind Label}" FontWeight="{x:Bind Weight}" />
+              <TextBlock Text="{x:Bind Detail}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+          </TreeViewItem>
+        </DataTemplate>
+      </TreeView.ItemTemplate>
+    </TreeView>
+
+    <TextBlock x:Name="EmptyText" Margin="12,4" Text="Open a project or solution to see its files."
+               Style="{StaticResource PanePlaceholderTextStyle}" TextWrapping="Wrap" />
+  </Grid>
+</UserControl>

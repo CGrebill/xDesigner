@@ -27,6 +27,9 @@ public sealed class XamlDocument
     private XamlDocument(XDocument xml, string? prolog, string epilog, string newLine, Encoding encoding)
     {
         Xml = xml;
+        Profile = Frameworks.FrameworkProfile.FamilyOf(xml.Root!.Name.Namespace) is { } family
+            ? Frameworks.FrameworkProfile.Latest(family)
+            : Frameworks.FrameworkProfile.Avalonia12;
         Prolog = prolog;
         Epilog = epilog;
         NewLine = newLine;
@@ -36,6 +39,12 @@ public sealed class XamlDocument
     }
 
     public XDocument Xml { get; }
+
+    /// <summary>
+    /// The framework the document is written for. Inferred from the root's default namespace (the newest version of that
+    /// framework); the app sets the exact version once it knows the project's (Avalonia 11 or 12).
+    /// </summary>
+    public Frameworks.FrameworkProfile Profile { get; set; }
 
     /// <summary>Identifies this open document for the session (e.g. to tell whether a clipboard fragment came from it).</summary>
     public string InstanceId { get; } = Guid.NewGuid().ToString("N");

@@ -26,19 +26,25 @@ event handlers in C#. It writes the `.axaml` files for you.
 | Design surface (middle) | One tab per open file |
 | Outline (right, top) | Every control of the file as a tree |
 | Properties / Events (right, bottom) | The selected control's properties and events |
-| Output (bottom) | Messages from xDesigner (**Output**), the build (**Build**), your running app (**Run**) and every handler created (**Events**) |
+| Output (bottom) | Messages from xDesigner (**Output**), the build (**Build**), your running app (**Run**), every handler created (**Events**) and the last build's errors and warnings (**Error List**) |
 | Status bar | Renderer state, file path, the selection's position and size, zoom, grid snapping |
 
-Panes can be resized by dragging the bars between them; xDesigner remembers their sizes. Messages that need your
+Panes can be resized by dragging the bars between them; xDesigner remembers their sizes. **View › Toolbox** and
+**View › Output** hide or show those panes; **View › Solution Explorer** (Ctrl+Alt+L) and **View › Error List** bring
+those forward. Messages that need your
 attention (confirmations, warnings, errors) slide in under the title bar.
 
 ## Projects and files
 
-- **File › New project…** (Ctrl+Shift+N) creates an Avalonia 12 desktop app: choose a name, a folder (by default
-  `Documents\Avalonia Projects`) and the window title. xDesigner builds it and opens `MainWindow.axaml`. The project is
-  a normal .NET project; open it in Visual Studio, VS Code or Rider whenever you like.
-- **Project › Open project…** (Ctrl+Shift+O) opens a `.csproj`, `.sln` or `.slnx`. The project's `.axaml` files are
-  listed under **Project › Files**. Projects must use Avalonia 12.
+- **File › New project…** (Ctrl+Shift+N) creates an Avalonia desktop app: choose Avalonia 12 or 11, a name, a folder
+  (by default `Documents\Avalonia Projects`) and the window title. xDesigner builds it and opens `MainWindow.axaml`. The
+  project is a normal .NET project; open it in Visual Studio, VS Code or Rider whenever you like.
+- **Project › Open project…** (Ctrl+Shift+O) opens a `.csproj`, `.sln` or `.slnx`. All of a solution's projects open
+  together, in **Solution Explorer** (the **Solution** tab above the outline): each project shows the framework it
+  uses, and the startup project (the one Run starts, in bold) can be changed with a right-click. Projects can use
+  Avalonia 11 (11.1 or later) or 12, even both in one solution: each file is drawn by its own project's Avalonia
+  version. Double-click a XAML file to design it, or any other file to open it in your code editor. The startup
+  project's XAML files are also listed under **Project › Files**.
 - **File › Open…** (Ctrl+O) opens a single `.axaml` file, or a project. A file opened on its own still finds its
   project, so its custom controls render.
 - **Project › Add window…** and **Add user control…** create a new `.axaml` file with its code-behind and open it.
@@ -161,7 +167,9 @@ controls and images appear on the form after a successful build. Builds made out
 Studio, are picked up too.
 
 **Run** (F5) saves your changes, builds and starts the app; its console output goes to Output › Run. **Stop**
-(Shift+F5) closes it. Build errors are listed in Output › Build.
+(Shift+F5) closes it. Build errors are listed in Output › Error List (double-click one to open its file at the line)
+and, in full, in Output › Build. With a solution open, Rebuild builds the whole solution and Run starts the startup
+project.
 
 Building and running needs the [.NET 10 SDK](https://dotnet.microsoft.com/download) (the project's `global.json` can ask
 for another version). Opening and designing files works without it.

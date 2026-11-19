@@ -65,15 +65,28 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Messages]
 UninstalledAll=%1 was removed from your computer, together with its settings.%n%nYour own projects were not touched.
 
+[Types]
+Name: "full"; Description: "All renderers"
+Name: "custom"; Description: "Choose which frameworks to design"; Flags: iscustom
+
+; One renderer per framework version (renderhosts\{folder}, FrameworkProfile.HostFolder). Each carries its own runtime and
+; framework libraries, so leaving out the ones you don't use keeps the install small.
+[Components]
+Name: "app"; Description: "xDesigner"; Types: full custom; Flags: fixed
+Name: "avalonia12"; Description: "Avalonia 12 renderer"; Types: full custom
+Name: "avalonia11"; Description: "Avalonia 11 renderer (projects on Avalonia 11.1 or later)"; Types: full
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [InstallDelete]
-; An upgrade starts from an empty folder, so no file of an older version is left behind.
+; An upgrade starts from an empty folder, so no file of an older version (or of a renderer no longer chosen) is left behind.
 Type: filesandordirs; Name: "{app}\*"
 
 [Files]
-Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PublishDir}\*"; Excludes: "\renderhosts\*"; DestDir: "{app}"; Components: app; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PublishDir}\renderhosts\avalonia12\*"; DestDir: "{app}\renderhosts\avalonia12"; Components: avalonia12; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PublishDir}\renderhosts\avalonia11\*"; DestDir: "{app}\renderhosts\avalonia11"; Components: avalonia11; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; Comment: "A visual designer for Avalonia UI"
@@ -125,7 +138,7 @@ begin
     if HasDotNetSdk() then
       SdkNote := ''
     else
-      SdkNote := #13#10#13#10 + 'Note: the .NET 10 SDK was not found. xDesigner opens and edits .axaml files without it, ' +
+      SdkNote := #13#10#13#10 + 'Note: the .NET 10 SDK was not found. xDesigner opens and edits XAML files without it, ' +
         'but building and running projects needs it: https://dotnet.microsoft.com/download';
   end;
 end;

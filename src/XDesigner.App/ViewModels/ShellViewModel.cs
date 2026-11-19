@@ -23,7 +23,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _hosts = hosts;
         _dispatcher = dispatcher;
         _hosts.Log += message => RunOnUi(() => AppendLog(message));
-        _hosts.HostReady += connection => RunOnUi(() => RendererStatus = $"Avalonia {connection.Info.AvaloniaVersion}");
+        _hosts.HostReady += _ => RunOnUi(UpdateRendererStatus);
         _hosts.HostRestarted += path => RunOnUi(() =>
         {
             foreach (var doc in Documents.Where(d => string.Equals(d.UserAssemblyPath, path, StringComparison.OrdinalIgnoreCase)))
@@ -48,6 +48,21 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string RendererStatus { get; private set; } = "Renderer not started";
+
+    partial void OnSelectedDocumentChanged(DocumentViewModel? value) => UpdateRendererStatus();
+
+    /// <summary>The status bar names the renderer of the selected document (several may run: one per framework version).</summary>
+    private void UpdateRendererStatus()
+    {
+        if (SelectedDocument is not { } doc)
+        {
+            return; // keep the last one shown
+        }
+
+        RendererStatus = _hosts.TryGetRunning(doc.HostKey) is { } host
+            ? $"{doc.Xaml.Profile.Family} {host.Info.FrameworkVersion}"
+            : $"{doc.Xaml.Profile.DisplayName} (starting)";
+    }
 
     /// <summary>Opens a XAML file, or switches to it if already open.</summary>
     public async Task<DocumentViewModel?> OpenFileAsync(string path)
@@ -76,10 +91,11 @@ public sealed partial class ShellViewModel : ObservableObject
             return null;
         }
 
-        var project = Project is { } open && open.Contains(path) ? open.ToOutput() : ProjectOutputLocator.TryFind(path);
-        if (Project is { } p && p.Contains(path))
+        var owner = ProjectOf(path);
+        var project = owner is not null ? owner.Info.ToOutput() : ProjectOutputLocator.TryFind(path);
+        if (owner is not null)
         {
-            AppendLog($"Opened {Path.GetFileName(path)} from project {p.Name}{(project?.AssemblyPath is null ? " (not built yet)" : "")}.");
+            AppendLog($"Opened {Path.GetFileName(path)} from project {owner.Info.Name}{(project?.AssemblyPath is null ? " (not built yet)" : "")}.");
         }
         else if (project is null)
         {

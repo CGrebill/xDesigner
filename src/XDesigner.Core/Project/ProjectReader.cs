@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -19,7 +18,15 @@ public sealed record ProjectInfo(
     public string Directory => Path.GetDirectoryName(ProjectPath)!;
 
     /// <summary>For documents of this project: the assembly the renderer should load, if it has been built.</summary>
-    public ProjectOutput ToOutput() => new(ProjectPath, AssemblyName, File.Exists(TargetPath) ? TargetPath : null);
+    public ProjectOutput ToOutput()
+    {
+        var built = File.Exists(TargetPath) ? TargetPath : null;
+        return new(ProjectPath, AssemblyName, built, Frameworks.FrameworkDetector.Detect(ProjectPath, built).Profile);
+    }
+
+    /// <summary>The framework the project uses: from its build when it has one, else from the project file.</summary>
+    public Frameworks.DetectedFramework DetectFramework() =>
+        Frameworks.FrameworkDetector.Detect(ProjectPath, File.Exists(TargetPath) ? TargetPath : null);
 
     public bool Contains(string filePath) =>
         Path.GetFullPath(filePath).StartsWith(Directory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
@@ -41,7 +48,10 @@ public static partial class ProjectReader
         if (string.IsNullOrEmpty(values.GetValueOrDefault("TargetFramework")) && values.GetValueOrDefault("TargetFrameworks") is { Length: > 0 } frameworks)
         {
             var list = frameworks.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var pick = list.FirstOrDefault(f => !f.Contains('-')) ?? list[0];
+            // A desktop framework: plain netX.Y, else the Windows one (MAUI), never Android or iOS first.
+            var pick = list.FirstOrDefault(f => !f.Contains('-'))
+                ?? list.FirstOrDefault(f => f.Contains("-windows", StringComparison.OrdinalIgnoreCase))
+                ?? list[0];
             values = await GetPropertiesAsync(projectPath, [$"-p:TargetFramework={pick}"], cancellationToken).ConfigureAwait(false);
         }
 
@@ -85,8 +95,16 @@ public static partial class ProjectReader
             .ToDictionary(p => p.Name, p => p.Value.GetString() ?? "", StringComparer.OrdinalIgnoreCase);
     }
 
-    /// <summary>The project's <c>.axaml</c> files (Windows, UserControls…), skipping <c>bin</c>, <c>obj</c> and hidden folders.</summary>
-    public static IReadOnlyList<string> XamlFiles(string projectDirectory)
+    /// <summary>
+    /// The project's XAML files (<c>.axaml</c> and <c>.xaml</c>: Windows, Pages, UserControls…), skipping <c>bin</c>,
+    /// <c>obj</c> and hidden folders.
+    /// </summary>
+    public static IReadOnlyList<string> XamlFiles(string projectDirectory) => Files(projectDirectory, "*.axaml", "*.xaml");
+
+    /// <summary>The project's XAML and C# files (what Solution Explorer lists), skipping <c>bin</c>, <c>obj</c> and hidden folders.</summary>
+    public static IReadOnlyList<string> SourceFiles(string projectDirectory) => Files(projectDirectory, "*.axaml", "*.xaml", "*.cs");
+
+    private static List<string> Files(string projectDirectory, params string[] patterns)
     {
         var result = new List<string>();
         var pending = new Stack<DirectoryInfo>([new DirectoryInfo(projectDirectory)]);
@@ -94,7 +112,7 @@ public static partial class ProjectReader
         {
             try
             {
-                result.AddRange(dir.EnumerateFiles("*.axaml").Select(f => f.FullName));
+                result.AddRange(patterns.SelectMany(dir.EnumerateFiles).Select(f => f.FullName));
                 foreach (var sub in dir.EnumerateDirectories())
                 {
                     if (sub.Name is not ("bin" or "obj" or "node_modules") && !sub.Name.StartsWith('.'))
@@ -112,19 +130,24 @@ public static partial class ProjectReader
         return result.Order(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    /// <summary>The file a project opens with: <c>MainWindow.axaml</c>, else the first Window, else the first file (not App.axaml).</summary>
+    /// <summary>
+    /// The file a project opens with: <c>MainWindow</c>, else <c>MainPage</c>, else the first Window or Page, else the first
+    /// file. Never the application itself (<c>App</c>, <c>AppShell</c>).
+    /// </summary>
     public static string? MainXamlFile(IReadOnlyList<string> files)
     {
-        var candidates = files.Where(f => !Path.GetFileName(f).Equals("App.axaml", StringComparison.OrdinalIgnoreCase)).ToList();
-        return candidates.FirstOrDefault(f => Path.GetFileName(f).Equals("MainWindow.axaml", StringComparison.OrdinalIgnoreCase))
-            ?? candidates.FirstOrDefault(IsWindow)
+        static string Stem(string path) => Path.GetFileName(path).Split('.')[0];
+        var candidates = files.Where(f => Stem(f) is not ("App" or "AppShell")).ToList();
+        return candidates.FirstOrDefault(f => Stem(f).Equals("MainWindow", StringComparison.OrdinalIgnoreCase))
+            ?? candidates.FirstOrDefault(f => Stem(f).Equals("MainPage", StringComparison.OrdinalIgnoreCase))
+            ?? candidates.FirstOrDefault(IsWindowOrPage)
             ?? candidates.FirstOrDefault();
 
-        static bool IsWindow(string path)
+        static bool IsWindowOrPage(string path)
         {
             try
             {
-                return XDocument.Load(path).Root?.Name.LocalName == "Window";
+                return XDocument.Load(path).Root?.Name.LocalName is "Window" or "Page" or "ContentPage";
             }
             catch (Exception ex) when (ex is IOException or System.Xml.XmlException or UnauthorizedAccessException)
             {
@@ -159,57 +182,7 @@ public static partial class ProjectReader
     /// The Avalonia version a built project uses: <c>Avalonia.Base.dll</c> in the output folder (apps), else the
     /// <c>Avalonia</c> package listed in its <c>deps.json</c> (libraries). Null when it can't tell.
     /// </summary>
-    public static Version? AvaloniaVersionOf(string targetPath)
-    {
-        var dir = Path.GetDirectoryName(targetPath);
-        if (dir is null)
-        {
-            return null;
-        }
-
-        var baseDll = Path.Combine(dir, "Avalonia.Base.dll");
-        if (File.Exists(baseDll))
-        {
-            try
-            {
-                return AssemblyName.GetAssemblyName(baseDll).Version;
-            }
-            catch (Exception ex) when (ex is BadImageFormatException or IOException)
-            {
-                // Fall back to deps.json.
-            }
-        }
-
-        var deps = Path.ChangeExtension(targetPath, ".deps.json");
-        if (!File.Exists(deps))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var json = JsonDocument.Parse(File.ReadAllText(deps));
-            if (!json.RootElement.TryGetProperty("libraries", out var libraries))
-            {
-                return null;
-            }
-
-            foreach (var library in libraries.EnumerateObject())
-            {
-                var parts = library.Name.Split('/');
-                if (parts.Length == 2 && parts[0] is "Avalonia" or "Avalonia.Base" && Version.TryParse(parts[1].Split('-')[0], out var version))
-                {
-                    return version;
-                }
-            }
-        }
-        catch (Exception ex) when (ex is JsonException or IOException)
-        {
-            // Unreadable deps.json.
-        }
-
-        return null;
-    }
+    public static Version? AvaloniaVersionOf(string targetPath) => Frameworks.FrameworkDetector.AvaloniaVersion(targetPath);
 
     [GeneratedRegex("""^Project\("\{[^}]+\}"\)\s*=\s*"[^"]*"\s*,\s*"(?<path>[^"]+)"\s*,""", RegexOptions.Multiline)]
     private static partial Regex SlnProjectLine();

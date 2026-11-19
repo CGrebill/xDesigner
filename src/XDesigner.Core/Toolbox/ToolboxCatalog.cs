@@ -24,28 +24,30 @@ public sealed record ToolboxItem(
 public sealed record ToolboxCategory(string Name, IReadOnlyList<ToolboxItem> Items, bool StartsCollapsed = false);
 
 /// <summary>
-/// Builds the toolbox (§9.1) from the curated <c>toolbox.json</c> plus whatever the render host found:
+/// Builds the toolbox (§9.1) from the framework's curated list (<c>toolbox.avalonia.json</c>, …) plus whatever the render host found:
 /// the user's own controls (Project), controls from NuGet packages (Packages) and any built-in control
 /// not in the curated list (Other).
 /// </summary>
 public static class ToolboxCatalog
 {
     private const string DefaultGlyph = "";
-    private static readonly Lazy<CuratedFile> Curated = new(LoadCurated);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, CuratedFile> Curated = new(StringComparer.Ordinal);
 
     public static IReadOnlyList<ToolboxCategory> Build(ControlCatalog catalog, string? userAssemblyName)
     {
-        var placeable = catalog.All.Where(IsPlaceable).ToList();
+        var profile = catalog.Profile;
+        var placeable = catalog.All.Where(t => IsPlaceable(t, profile)).ToList();
         var categories = new List<ToolboxCategory>();
         var listed = new HashSet<string>();
+        var builtInNamespace = profile.DefaultNamespace.NamespaceName;
 
-        foreach (var category in Curated.Value.Categories)
+        foreach (var category in Curated.GetOrAdd(profile.ToolboxResource, LoadCurated).Categories)
         {
             var items = new List<ToolboxItem>();
             foreach (var entry in category.Items)
             {
-                var type = placeable.FirstOrDefault(t => t.IsBuiltIn && t.Name == entry.Type && t.XmlNamespace == ControlTypeInfo.AvaloniaXmlNamespace)
-                    ?? placeable.FirstOrDefault(t => t.Name == entry.Type && t.XmlNamespace == ControlTypeInfo.AvaloniaXmlNamespace);
+                var type = placeable.FirstOrDefault(t => t.IsBuiltIn && t.Name == entry.Type && t.XmlNamespace == builtInNamespace)
+                    ?? placeable.FirstOrDefault(t => t.Name == entry.Type && t.XmlNamespace == builtInNamespace);
                 if (type is not null && listed.Add(type.FullName))
                 {
                     items.Add(new ToolboxItem(type, category.Name, Glyph(entry.Glyph), entry.Attributes ?? [], entry.SizeWhenPositioned ?? []));
@@ -64,15 +66,12 @@ public static class ToolboxCatalog
         return categories;
     }
 
-    /// <summary>Default attributes for a type that isn't in <c>toolbox.json</c> (custom controls).</summary>
+    /// <summary>Default attributes for a type that isn't in the curated list (custom controls).</summary>
     public static ToolboxItem ItemFor(ControlTypeInfo type) => new(type, "", DefaultGlyph, new Dictionary<string, string>(), new Dictionary<string, string>());
 
     /// <summary>Creatable, and something you can drop inside a form (not a window or popup).</summary>
-    public static bool IsPlaceable(ControlTypeInfo type) =>
-        type.IsCreatable
-        && !type.DerivesFrom("Avalonia.Controls.TopLevel")
-        && !type.DerivesFrom("Avalonia.Controls.Primitives.PopupRoot")
-        && !type.DerivesFrom("Avalonia.Controls.Primitives.OverlayPopupHost");
+    public static bool IsPlaceable(ControlTypeInfo type, Frameworks.FrameworkProfile profile) =>
+        type.IsCreatable && !profile.TopLevelTypes.Any(type.DerivesFrom);
 
     private static void AddGroup(List<ToolboxCategory> categories, string name, IEnumerable<ControlTypeInfo> types, bool collapsed = false)
     {
@@ -95,12 +94,17 @@ public static class ToolboxCatalog
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    private static CuratedFile LoadCurated()
+    /// <summary>The curated list of one framework family; a family without one yet gets only the generated groups.</summary>
+    private static CuratedFile LoadCurated(string resource)
     {
-        using var stream = typeof(ToolboxCatalog).Assembly.GetManifestResourceStream("XDesigner.Core.Toolbox.toolbox.json")
-            ?? throw new InvalidOperationException("toolbox.json is not embedded.");
+        using var stream = typeof(ToolboxCatalog).Assembly.GetManifestResourceStream($"XDesigner.Core.Toolbox.{resource}");
+        if (stream is null)
+        {
+            return new CuratedFile([]);
+        }
+
         return JsonSerializer.Deserialize<CuratedFile>(stream, JsonOptions)
-            ?? throw new InvalidOperationException("toolbox.json is empty.");
+            ?? throw new InvalidOperationException($"{resource} is empty.");
     }
 
     private sealed record CuratedFile(List<CuratedCategory> Categories);

@@ -10,8 +10,6 @@ namespace XDesigner.Core.Naming;
 /// </summary>
 public static class NameGenerator
 {
-    private static readonly XName XName_ = XName.Get("Name", XamlNamespaces.Xaml);
-
     /// <summary>The first unused <c>{camelCaseType}{n}</c> in the document, n ≥ 1.</summary>
     public static string Next(XamlDocument document, string typeName, IEnumerable<string>? alsoTaken = null)
     {
@@ -35,7 +33,7 @@ public static class NameGenerator
     /// <summary>All <c>x:Name</c>/<c>Name</c> values in the document.</summary>
     public static HashSet<string> UsedNames(XamlDocument document) =>
         document.Xml.Root!.DescendantsAndSelf()
-            .Select(e => (string?)e.Attribute(XName_) ?? (string?)e.Attribute("Name"))
+            .Select(RenderCopyBuilder.NameOf)
             .Where(n => n is not null)
             .ToHashSet(StringComparer.Ordinal)!;
 

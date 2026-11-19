@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Xml;
+using XDesigner.Core.Frameworks;
 using XDesigner.Core.Project;
 using XDesigner.Core.Xaml;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -36,8 +37,12 @@ public sealed partial class ShellViewModel
     /// <summary>A message for the notification strip.</summary>
     public event Action<NotifyRequest>? Notify;
 
-    /// <summary>Asks the user to pick one of a solution's projects (set by the window). Null = cancelled.</summary>
-    public Func<IReadOnlyList<string>, Task<string?>>? ChooseProject { get; set; }
+    /// <summary>
+    /// The open solution: all its projects, each with its framework (one project opened on its own is a solution of one).
+    /// <see cref="Project"/> is its startup project.
+    /// </summary>
+    [ObservableProperty]
+    public partial SolutionModel? Solution { get; private set; }
 
     /// <summary>Opens a <c>.csproj</c>, <c>.sln</c>/<c>.slnx</c> or a XAML file.</summary>
     public async Task OpenAnyAsync(string path)
@@ -70,70 +75,62 @@ public sealed partial class ShellViewModel
         }
     }
 
-    /// <summary>A solution: its projects that contain XAML files; the user picks when there are several.</summary>
-    public async Task OpenSolutionAsync(string solutionPath)
-    {
-        IReadOnlyList<string> projects;
-        try
-        {
-            projects = ProjectReader.SolutionProjects(solutionPath)
-                .Where(p => ProjectReader.XamlFiles(Path.GetDirectoryName(p)!).Count > 0).ToList();
-        }
-        catch (Exception ex) when (ex is IOException or XmlException or UnauthorizedAccessException)
-        {
-            AppendLog($"Could not read {Path.GetFileName(solutionPath)}: {ex.Message}");
-            return;
-        }
+    /// <summary>A solution: every project in it, each designed with its own framework's renderer.</summary>
+    public Task OpenSolutionAsync(string solutionPath) => OpenAsync(solutionPath);
 
-        var choice = projects.Count switch
-        {
-            0 => null,
-            1 => projects[0],
-            _ => ChooseProject is { } choose ? await choose(projects) : projects[0],
-        };
-        if (projects.Count == 0)
-        {
-            RaiseNotify(NotifyKind.Warning, $"{Path.GetFileName(solutionPath)} has no project with .axaml files.");
-        }
-
-        if (choice is not null)
-        {
-            await OpenProjectAsync(choice);
-        }
-    }
+    /// <summary>A project on its own (a solution of one).</summary>
+    public Task OpenProjectAsync(string projectPath) => OpenAsync(projectPath);
 
     /// <summary>
-    /// Opens a project: evaluates it with MSBuild, lists its XAML files, opens its main window, then builds it so the
-    /// renderer can show its custom controls and styles (D11: build on open).
+    /// Opens a solution or project: evaluates every project with MSBuild, picks the startup project, opens its main
+    /// window, then builds so the renderers can show the projects' custom controls and styles (D11: build on open).
     /// </summary>
-    public async Task OpenProjectAsync(string projectPath)
+    private async Task OpenAsync(string path)
     {
-        var name = Path.GetFileName(projectPath);
-        AppendLog($"Opening project {name}…");
-        ProjectInfo info;
+        var name = Path.GetFileName(path);
+        AppendLog($"Opening {name}…");
+        SolutionModel solution;
         try
         {
-            info = await ProjectReader.ReadAsync(projectPath);
+            solution = await SolutionModel.OpenAsync(path, problem => RunOnUi(() => AppendLog($"Skipped {problem}")));
         }
-        catch (Exception ex) when (ex is ProjectException or System.ComponentModel.Win32Exception)
+        catch (Exception ex) when (ex is ProjectException or System.ComponentModel.Win32Exception or IOException or XmlException or UnauthorizedAccessException)
         {
             AppendLog(ex.Message);
             RaiseNotify(NotifyKind.Error, $"Couldn't open {name}: MSBuild couldn't read it. Details are in Output.");
             return;
         }
 
-        Project = info;
-        AppendLog($"Project {info.Name}: {info.TargetFramework}, {info.OutputType}, output {info.TargetPath}");
-        RefreshProjectFiles();
-        WatchProjectOutput(info);
-        _ = WarnAboutPreviewSdkAsync(info);
-
-        foreach (var doc in Documents.Where(d => info.Contains(d.FilePath)))
+        foreach (var project in solution.Projects)
         {
-            doc.UseProject(info.ToOutput());
+            AppendLog($"Project {project.Info.Name}: {project.Framework.Profile?.DisplayName ?? "no UI framework the designer knows"}, {project.Info.TargetFramework}, {project.Info.OutputType}");
         }
 
-        if (ProjectReader.MainXamlFile(ProjectFiles) is { } main)
+        Solution = solution;
+        if (solution.DefaultStartup is not { } startup)
+        {
+            RaiseNotify(NotifyKind.Warning, $"{name} has no C# projects the designer can read.");
+            return;
+        }
+
+        if (!solution.DesignableProjects.Any())
+        {
+            RaiseNotify(NotifyKind.Warning, solution.Projects.Select(p => p.Framework.Problem(p.Info.Name)).FirstOrDefault(p => p is not null)
+                ?? $"{name} has no project with XAML files.");
+        }
+
+        SetStartupProject(startup);
+        _ = WarnAboutPreviewSdkAsync(startup.Info);
+
+        foreach (var doc in Documents)
+        {
+            if (solution.ProjectContaining(doc.FilePath) is { } owner)
+            {
+                doc.UseProject(owner.Info.ToOutput());
+            }
+        }
+
+        if (ProjectReader.MainXamlFile(startup.XamlFiles) is { } main)
         {
             await OpenFileAsync(main);
         }
@@ -141,14 +138,27 @@ public sealed partial class ShellViewModel
         await BuildAsync();
     }
 
+    /// <summary>The project Run starts and Project ▸ Add adds to (Solution Explorer ▸ Set as startup project).</summary>
+    public void SetStartupProject(SolutionProject project)
+    {
+        Project = project.Info;
+        RefreshProjectFiles();
+        WatchProjectOutput(project.Info);
+        AppendLog($"Startup project: {project.Label}.");
+    }
+
     public void CloseProject()
     {
         _outputWatcher?.Dispose();
         _outputWatcher = null;
+        Solution = null;
         Project = null;
         ProjectFiles = [];
         ProjectFilesChanged?.Invoke();
     }
+
+    /// <summary>The project a file belongs to, in the open solution.</summary>
+    public SolutionProject? ProjectOf(string filePath) => Solution?.ProjectContaining(filePath);
 
     /// <summary>
     /// Builds the project (saving its unsaved XAML first, so the build matches what's on screen). On success the renderer
@@ -184,7 +194,13 @@ public sealed partial class ShellViewModel
     {
         await StopRunForBuildAsync();
 
-        foreach (var doc in Documents.Where(d => saveDocuments && d.IsDirty && project.Contains(d.FilePath)).ToList())
+        // The whole solution: a document of any project in it may be among those saved, and every project's renderer
+        // is refreshed afterwards.
+        var solution = Solution;
+        var target = solution?.BuildTarget ?? project.ProjectPath;
+        bool InBuild(DocumentViewModel d) => solution is not null ? solution.ProjectContaining(d.FilePath) is not null : project.Contains(d.FilePath);
+
+        foreach (var doc in Documents.Where(d => saveDocuments && d.IsDirty && InBuild(d)).ToList())
         {
             if (!CanSaveOverDisk(doc))
             {
@@ -204,11 +220,11 @@ public sealed partial class ShellViewModel
 
         IsBuilding = true;
         BuildLines.Clear();
-        AppendBuild($"Building {project.Name} ({project.ProjectPath})…");
+        AppendBuild($"Building {Path.GetFileName(target)} ({target})…");
         BuildResult result;
         try
         {
-            result = await BuildRunner.BuildAsync(project.ProjectPath, line => RunOnUi(() => AppendBuild(line)));
+            result = await BuildRunner.BuildAsync(target, line => RunOnUi(() => AppendBuild(line)));
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException)
         {
@@ -223,6 +239,12 @@ public sealed partial class ShellViewModel
         }
 
         IsBuilding = false;
+        Diagnostics.Clear();
+        foreach (var diagnostic in result.Diagnostics.OrderByDescending(d => d.IsError).Distinct())
+        {
+            Diagnostics.Add(new DiagnosticRow(diagnostic));
+        }
+
         var seconds = $"{result.Duration.TotalSeconds:0.0} s";
         var errors = result.Errors.ToList();
         var warnings = result.Warnings.Count();
@@ -239,35 +261,59 @@ public sealed partial class ShellViewModel
             return false;
         }
 
-        if (!await ApplyBuildAsync(project))
+        // Every project with XAML files: its build output (and so its framework version) may be new.
+        var built = solution is not null ? solution.Projects.Where(p => p.XamlFiles.Count > 0).Select(p => p.Info).ToList() : [project];
+        var problems = new List<string>();
+        foreach (var info in built)
         {
-            return false;
+            if (await ApplyBuildAsync(info) is { } problem)
+            {
+                problems.Add(problem);
+            }
+
+            if (Solution is { } current && current.Find(info.ProjectPath) is not null)
+            {
+                Solution = current.With(SolutionModel.Describe(info));
+            }
         }
 
-        RaiseNotify(NotifyKind.Success, $"Build succeeded in {seconds}. Custom controls and styles from {project.Name} are up to date.");
+        if (problems.Count > 0)
+        {
+            RaiseNotify(NotifyKind.Error, problems.Count == 1 ? problems[0] : $"{problems[0]} ({problems.Count - 1} more in Output.)");
+            problems.Skip(1).ToList().ForEach(AppendLog);
+            return built.Count > problems.Count; // a designable project still got its build
+        }
+
+        var names = built.Count == 1 ? built[0].Name : $"the {built.Count} projects";
+        RaiseNotify(NotifyKind.Success, $"Build succeeded in {seconds}. Custom controls and styles from {names} are up to date.");
         return true;
     }
+
+    /// <summary>The last build's errors and warnings (Output ▸ Error List).</summary>
+    public ObservableCollection<DiagnosticRow> Diagnostics { get; } = [];
 
     /// <summary>The window brings the Build tab forward.</summary>
     public event Action? ShowBuildOutput;
 
     /// <summary>
-    /// After a successful build: rejects non-12 Avalonia (D5), otherwise restarts the renderer so every document of the
-    /// project shows the new assemblies. False when the build can't be used.
+    /// After a successful build: rejects frameworks and versions the designer can't render (D5), otherwise restarts the
+    /// project's renderer so every document of the project shows the new assemblies. Returns why the build can't be used.
     /// </summary>
-    private async Task<bool> ApplyBuildAsync(ProjectInfo project)
+    private async Task<string?> ApplyBuildAsync(ProjectInfo project)
     {
-        var version = ProjectReader.AvaloniaVersionOf(project.TargetPath);
-        if (version is { Major: not Protocol.ProtocolInfo.SupportedAvaloniaMajorVersion })
+        bool Owns(DocumentViewModel d) => Solution?.ProjectContaining(d.FilePath) is { } owner
+            ? string.Equals(owner.Info.ProjectPath, project.ProjectPath, StringComparison.OrdinalIgnoreCase)
+            : project.Contains(d.FilePath);
+
+        var detected = FrameworkDetector.FromBuildOutput(project.TargetPath);
+        if (detected.Family is not null && detected.Problem(project.Name) is { } problem)
         {
-            RaiseNotify(NotifyKind.Error,
-                $"{project.Name} uses Avalonia {version.ToString(3)}. The designer supports Avalonia 12 only; its files are shown with the default theme and without its custom controls.");
-            foreach (var doc in Documents.Where(d => project.Contains(d.FilePath)))
+            foreach (var doc in Documents.Where(Owns))
             {
                 doc.UseProject(project.ToOutput() with { AssemblyPath = null });
             }
 
-            return false;
+            return $"{problem} Its files are shown without its custom controls and styles.";
         }
 
         // An up-to-date build (the usual case when a project opens) leaves the assembly as the running renderer loaded
@@ -277,12 +323,12 @@ public sealed partial class ShellViewModel
             await _hosts.RestartAsync(project.TargetPath);
         }
 
-        foreach (var doc in Documents.Where(d => project.Contains(d.FilePath)))
+        foreach (var doc in Documents.Where(Owns))
         {
             doc.UseProject(project.ToOutput());
         }
 
-        return true;
+        return null;
     }
 
     private void RefreshProjectFiles()
@@ -347,7 +393,11 @@ public sealed partial class ShellViewModel
         }
 
         AppendLog($"{project.Name} was rebuilt outside the designer; reloading its controls.");
-        if (await ApplyBuildAsync(project))
+        if (await ApplyBuildAsync(project) is { } problem)
+        {
+            RaiseNotify(NotifyKind.Error, problem);
+        }
+        else
         {
             RaiseNotify(NotifyKind.Success, $"{project.Name} was rebuilt outside the designer. Custom controls and styles reloaded.");
         }

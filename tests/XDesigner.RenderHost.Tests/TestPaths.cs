@@ -11,11 +11,28 @@ internal static class TestPaths
     public static string Configuration { get; } =
         typeof(TestPaths).Assembly.GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration ?? "Debug";
 
+#if AVALONIA11
+    /// <summary>The Avalonia major version these tests run against (this file is shared by both host test projects).</summary>
+    public const int AvaloniaMajor = 11;
+    private const string Sample = "SampleAvalonia11App";
+    private const string HostProjectFolder = "XDesigner.RenderHost.Avalonia11";
+    private const string HostAssembly = "XDesigner.RenderHost.Avalonia11";
+#else
+    /// <summary>The Avalonia major version these tests run against (this file is shared by both host test projects).</summary>
+    public const int AvaloniaMajor = 12;
+    private const string Sample = "SampleAvaloniaApp";
+    private const string HostProjectFolder = "XDesigner.RenderHost.Avalonia";
+    private const string HostAssembly = "XDesigner.RenderHost.Avalonia12";
+#endif
+
+    /// <summary>The sample app's folder. Both samples build an assembly named SampleAvaloniaApp, so the tests are the same.</summary>
+    public static string SampleDirectory => Path.Combine(RepoRoot, "samples", Sample);
+
     public static string SampleAssembly =>
-        Path.Combine(RepoRoot, "samples", "SampleAvaloniaApp", "bin", Configuration, "net10.0", "SampleAvaloniaApp.dll");
+        Path.Combine(SampleDirectory, "bin", Configuration, "net10.0", "SampleAvaloniaApp.dll");
 
     public static string RenderHostExe =>
-        Path.Combine(RepoRoot, "src", "XDesigner.RenderHost", "bin", Configuration, "net10.0", "win-x64", "XDesigner.RenderHost.exe");
+        Path.Combine(RepoRoot, "src", HostProjectFolder, "bin", Configuration, "net10.0", "win-x64", HostAssembly + ".exe");
 
     private static string FindRepoRoot()
     {

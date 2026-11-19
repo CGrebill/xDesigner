@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Avalonia render host built against Avalonia 11 (§14): the source is ..\XDesigner.RenderHost.Avalonia's, compiled
+    with AVALONIA11 defined for the API differences. Projects on Avalonia 11.1 or later run on it (the newest 11.x, so
+    their assemblies bind forward within the major version).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>XDesigner.RenderHost.Avalonia11</AssemblyName>
+    <RootNamespace>XDesigner.RenderHost</RootNamespace>
+    <DefineConstants>$(DefineConstants);AVALONIA11</DefineConstants>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <Description>Out-of-process Avalonia 11 headless renderer for the designer. One instance per open project.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <_HostSource>..\XDesigner.RenderHost.Avalonia\</_HostSource>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(_HostSource)**\*.cs" Exclude="$(_HostSource)bin\**;$(_HostSource)obj\**" LinkBase="Shared" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" VersionOverride="$(Avalonia11Version)" />
+    <PackageReference Include="Avalonia.Headless" VersionOverride="$(Avalonia11Version)" />
+    <PackageReference Include="Avalonia.Skia" VersionOverride="$(Avalonia11Version)" />
+    <PackageReference Include="Avalonia.Markup.Xaml.Loader" VersionOverride="$(Avalonia11Version)" />
+    <PackageReference Include="Avalonia.Themes.Fluent" VersionOverride="$(Avalonia11Version)" />
+    <PackageReference Include="Avalonia.Fonts.Inter" VersionOverride="$(Avalonia11Version)" />
+    <PackageReference Include="StreamJsonRpc" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\XDesigner.Protocol\XDesigner.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="XDesigner.RenderHost.Avalonia11.Tests" />
+  </ItemGroup>
+
+</Project>

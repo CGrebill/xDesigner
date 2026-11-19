@@ -77,9 +77,10 @@ public sealed partial class DesignerActions
             if (!File.Exists(codeBehind))
             {
                 var rootType = catalog.Resolve(root);
-                var isAvalonia = rootType?.XmlNamespace == ControlTypeInfo.AvaloniaXmlNamespace;
-                CodeBehindWriter.CreateCodeBehind(codeBehind, className, isAvalonia ? root.TypeName : rootType?.FullName ?? root.TypeName,
-                    isAvalonia ? rootType!.ClrNamespace : null, _document.NewLine);
+                // A framework base class (Window, UserControl) is written short with a using; anything else in full.
+                var isBuiltIn = rootType?.XmlNamespace == _document.Profile.DefaultNamespace.NamespaceName;
+                CodeBehindWriter.CreateCodeBehind(codeBehind, className, isBuiltIn ? root.TypeName : rootType?.FullName ?? root.TypeName,
+                    isBuiltIn ? rootType!.ClrNamespace : null, _document.NewLine);
                 created = true;
             }
 
@@ -101,7 +102,7 @@ public sealed partial class DesignerActions
         {
             if (_document.Xml.Root!.GetPrefixOfNamespace(XamlNs) is null)
             {
-                commands.Add(new SetAttributeCommand(root.Id, XNamespace.Xmlns + "x", XamlNamespaces.Xaml));
+                commands.Add(new SetAttributeCommand(root.Id, XNamespace.Xmlns + "x", XamlNs.NamespaceName));
             }
 
             commands.Add(new PrependAttributeCommand(node.Id, XamlNs + "Name", newName));

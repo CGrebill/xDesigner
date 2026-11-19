@@ -13,11 +13,13 @@ namespace XDesigner.Core.Editing;
 /// </summary>
 public sealed partial class DesignerActions(XamlDocument document, UndoManager undo)
 {
-    private static readonly XNamespace XamlNs = XamlNamespaces.Xaml;
     private static readonly string[] SizeKeys = ["Width", "Height"];
 
     private readonly XamlDocument _document = document;
     private readonly UndoManager _undo = undo;
+
+    /// <summary>The document's XAML language namespace (<c>x:</c>; 2009 for MAUI).</summary>
+    private XNamespace XamlNs => _document.Profile.XamlNamespace;
 
     /// <summary>
     /// Adds a new control as planned by <see cref="DropPlanner"/>: generated <c>x:Name</c>, placement attributes,
@@ -31,7 +33,7 @@ public sealed partial class DesignerActions(XamlDocument document, UndoManager u
 
         if (root.GetPrefixOfNamespace(XamlNs) is null)
         {
-            commands.Add(new SetAttributeCommand(_document.Root.Id, XNamespace.Xmlns + "x", XamlNamespaces.Xaml));
+            commands.Add(new SetAttributeCommand(_document.Root.Id, XNamespace.Xmlns + "x", XamlNs.NamespaceName));
         }
 
         var elementNamespace = ElementNamespace(root, type.XmlNamespace, type.ClrNamespace, out var declaration);
@@ -105,9 +107,9 @@ public sealed partial class DesignerActions(XamlDocument document, UndoManager u
     public static XNamespace ElementNamespace(XElement root, string xmlNamespace, string clrNamespace, out (string Prefix, string Namespace)? declaration)
     {
         declaration = null;
-        if (xmlNamespace == Protocol.Metadata.ControlTypeInfo.AvaloniaXmlNamespace)
+        if (xmlNamespace == root.GetDefaultNamespace().NamespaceName)
         {
-            return xmlNamespace;
+            return xmlNamespace; // the framework's own controls: no prefix
         }
 
         foreach (var attribute in root.Attributes().Where(a => a.IsNamespaceDeclaration))

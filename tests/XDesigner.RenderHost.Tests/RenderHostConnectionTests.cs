@@ -18,10 +18,11 @@ public class RenderHostConnectionTests(ITestOutputHelper output)
         Assert.Equal("SampleAvaloniaApp.App", host.Info.ApplicationType);
         Assert.Equal("SampleAvaloniaApp", host.Info.UserAssemblyName);
         Assert.True(host.Info.IsDesignMode);
-        Assert.StartsWith("12.", host.Info.AvaloniaVersion);
+        Assert.Equal($"Avalonia{TestPaths.AvaloniaMajor}", host.Info.FrameworkId);
+        Assert.StartsWith($"{TestPaths.AvaloniaMajor}.", host.Info.FrameworkVersion);
 
         // The real file: x:Class and Click="button1_Click" are stripped by the host.
-        var source = await File.ReadAllTextAsync(Path.Combine(TestPaths.RepoRoot, "samples", "SampleAvaloniaApp", "MainWindow.axaml"), Ct);
+        var source = await File.ReadAllTextAsync(Path.Combine(TestPaths.SampleDirectory, "MainWindow.axaml"), Ct);
         var result = await host.Host.RenderAsync(new RenderRequest(1, RenderCopyBuilder.Build(source), 1.25, DocumentId: "main"), Ct);
 
         Assert.True(result.Success, result.Error?.Message);

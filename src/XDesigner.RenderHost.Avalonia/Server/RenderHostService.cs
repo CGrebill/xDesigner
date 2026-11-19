@@ -24,6 +24,7 @@ internal sealed class RenderHostService(HostRuntime runtime) : IRenderHost
     public Task<HostInfo> HandshakeAsync(int clientProtocolVersion, CancellationToken cancellationToken) =>
         Task.FromResult(new HostInfo(
             ProtocolInfo.Version,
+            HostVersions.FrameworkId,
             HostVersions.AvaloniaVersion.ToString(),
             runtime.ApplicationTypeName,
             runtime.BuilderSource,

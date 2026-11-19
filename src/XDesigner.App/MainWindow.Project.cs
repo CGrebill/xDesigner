@@ -24,9 +24,15 @@ public sealed partial class MainWindow
             }
         };
         ViewModel.ProjectFilesChanged += UpdateProjectFilesMenu;
-        ViewModel.ChooseProject = ChooseProjectAsync;
         ViewModel.BuildLines.CollectionChanged += OnBuildLinesChanged;
         ViewModel.PropertyChanged += OnProjectPropertyChanged;
+        ViewModel.Diagnostics.CollectionChanged += (_, _) =>
+        {
+            NoErrorsText.Visibility = ViewModel.Diagnostics.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            ErrorsTab.Text = ViewModel.Diagnostics.Count == 0 ? "Error List" : $"Error List ({ViewModel.Diagnostics.Count})";
+        };
+        SolutionPane.Attach(ViewModel);
+        SolutionPane.Message += message => ShowNotification(NotifyKind.Warning, message);
         UpdateProjectState();
     }
 
@@ -36,13 +42,29 @@ public sealed partial class MainWindow
         {
             UpdateProjectState();
         }
+
+        // A solution with several projects opens on Solution Explorer: that's where they are.
+        if (e.PropertyName is nameof(ShellViewModel.Solution) && ViewModel.Solution is { Projects.Count: > 1 } && !_solutionShown)
+        {
+            _solutionShown = true;
+            SideTabs.SelectedItem = SolutionTab;
+        }
+        else if (e.PropertyName is nameof(ShellViewModel.Solution) && ViewModel.Solution is null)
+        {
+            _solutionShown = false;
+        }
     }
+
+    private bool _solutionShown;
 
     private void UpdateProjectState()
     {
         var project = ViewModel.Project;
+        var solution = ViewModel.Solution;
         RebuildMenuItem.IsEnabled = project is not null && !ViewModel.IsBuilding;
-        RebuildMenuItem.Text = ViewModel.IsBuilding ? "Building…" : project is null ? "Rebuild" : $"Rebuild {project.Name}";
+        RebuildMenuItem.Text = ViewModel.IsBuilding ? "Building…"
+            : solution is { SolutionPath: not null } ? $"Rebuild solution {solution.Name}"
+            : project is null ? "Rebuild" : $"Rebuild {project.Name}";
         CloseProjectMenuItem.IsEnabled = project is not null;
         UpdateRunState();
         SyncFromSelectedDocument(); // title shows the project
@@ -103,30 +125,4 @@ public sealed partial class MainWindow
     }
 
     private void CloseProject_Click(object sender, RoutedEventArgs e) => ViewModel.CloseProject();
-
-    /// <summary>A solution with several XAML projects: which one to design.</summary>
-    private async Task<string?> ChooseProjectAsync(IReadOnlyList<string> projects)
-    {
-        var list = new ListView
-        {
-            ItemsSource = projects.Select(Path.GetFileNameWithoutExtension).ToList(),
-            SelectionMode = ListViewSelectionMode.Single,
-            SelectedIndex = 0,
-            MaxHeight = 320,
-        };
-        var dialog = new ContentDialog
-        {
-            XamlRoot = Content.XamlRoot,
-            Title = "Which project?",
-            Content = new StackPanel
-            {
-                Spacing = 8,
-                Children = { new TextBlock { Text = "This solution has several projects with .axaml files.", TextWrapping = TextWrapping.Wrap }, list },
-            },
-            PrimaryButtonText = "Open",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-        };
-        return await dialog.ShowOnceAsync() == ContentDialogResult.Primary && list.SelectedIndex >= 0 ? projects[list.SelectedIndex] : null;
-    }
 }

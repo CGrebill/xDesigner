@@ -3,7 +3,8 @@ using System.Xml.Linq;
 namespace XDesigner.Core.Project;
 
 /// <summary>The project a XAML file belongs to and its newest built assembly, if any.</summary>
-public sealed record ProjectOutput(string ProjectPath, string AssemblyName, string? AssemblyPath);
+/// <param name="Profile">The framework version the project uses, when it could be detected (§11.1).</param>
+public sealed record ProjectOutput(string ProjectPath, string AssemblyName, string? AssemblyPath, Frameworks.FrameworkProfile? Profile = null);
 
 /// <summary>
 /// Finds the project that owns a <c>.axaml</c> file and its most recently built assembly, so custom
@@ -53,6 +54,7 @@ public static class ProjectOutputLocator
                 .FirstOrDefault()
             : null;
 
-        return new ProjectOutput(project.FullName, assemblyName, newest?.FullName);
+        return new ProjectOutput(project.FullName, assemblyName, newest?.FullName,
+            Frameworks.FrameworkDetector.Detect(project.FullName, newest?.FullName).Profile);
     }
 }

@@ -111,6 +111,43 @@ public sealed partial class MainWindow : Window
         BuildList.Visibility = sender.SelectedItem == BuildTab ? Visibility.Visible : Visibility.Collapsed;
         RunList.Visibility = sender.SelectedItem == RunTab ? Visibility.Visible : Visibility.Collapsed;
         EventsList.Visibility = sender.SelectedItem == EventsLogTab ? Visibility.Visible : Visibility.Collapsed;
+        ErrorsPanel.Visibility = sender.SelectedItem == ErrorsTab ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SideTabs_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    {
+        var solution = sender.SelectedItem == SolutionTab;
+        SolutionPane.Visibility = solution ? Visibility.Visible : Visibility.Collapsed;
+        OutlinePane.Visibility = solution ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void ErrorsList_DoubleTapped(object sender, Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs e) => GoToDiagnostic();
+
+    private void ErrorsList_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Enter)
+        {
+            e.Handled = true;
+            GoToDiagnostic();
+        }
+    }
+
+    /// <summary>Opens the selected error's file: XAML in the designer, anything else in the code editor at the line.</summary>
+    private void GoToDiagnostic()
+    {
+        if (ErrorsList.SelectedItem is not ViewModels.DiagnosticRow { Diagnostic.File: { } file } row || !File.Exists(file))
+        {
+            return;
+        }
+
+        if (file.EndsWith(".axaml", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
+        {
+            _ = ViewModel.OpenFileAsync(file);
+        }
+        else if (ViewModel.CodeEditor.Open(file, row.Diagnostic.Line ?? 1) is { } problem)
+        {
+            ShowNotification(NotifyKind.Warning, problem);
+        }
     }
 
     /// <summary>Toolbar and status bar reflect the selected document's zoom/theme.</summary>
@@ -149,7 +186,10 @@ public sealed partial class MainWindow : Window
 
         StatusPath.Text = doc?.FilePath ?? "";
         StatusZoom.Text = doc is null ? "" : FormatZoom(doc.Zoom);
-        var project = ViewModel.Project is { } p ? $" – {p.Name}" : "";
+        // The document's own project (a solution may have several); without a document, the solution's name.
+        var projectName = doc is not null ? ViewModel.ProjectOf(doc.FilePath)?.Info.Name ?? ViewModel.Project?.Name
+            : ViewModel.Solution?.Name ?? ViewModel.Project?.Name;
+        var project = projectName is not null ? $" – {projectName}" : "";
         Title = doc is null ? $"xDesigner{project}" : $"{doc.Title}{project} – xDesigner";
         TitleText.Text = Title;
         NoDocuments.Visibility = ViewModel.Documents.Count == 0 ? Visibility.Visible : Visibility.Collapsed;

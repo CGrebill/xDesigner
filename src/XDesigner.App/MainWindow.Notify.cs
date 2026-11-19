@@ -88,7 +88,7 @@ public sealed partial class MainWindow
         [
             new NotifyAction("Open in editor", () =>
             {
-                if (EditorLauncher.Open(handler.FilePath, handler.Line, ViewModel.Settings) is { } problem)
+                if (ViewModel.CodeEditor.Open(handler.FilePath, handler.Line) is { } problem)
                 {
                     ShowNotification(NotifyKind.Warning, problem);
                 }

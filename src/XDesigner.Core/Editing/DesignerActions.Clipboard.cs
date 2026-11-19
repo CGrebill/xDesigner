@@ -204,7 +204,8 @@ public sealed partial class DesignerActions
             context.AddNamespace(declaration.Name.LocalName, declaration.Value);
         }
 
-        foreach (var (prefix, ns) in new[] { ("x", XamlNamespaces.Xaml), ("d", XamlNamespaces.Design), ("mc", XamlNamespaces.MarkupCompatibility) })
+        var profile = _document.Profile;
+        foreach (var (prefix, ns) in new[] { ("x", profile.XamlNamespace.NamespaceName), ("d", profile.DesignNamespace.NamespaceName), ("mc", XamlNamespaces.MarkupCompatibility) })
         {
             if (context.LookupNamespace(prefix) is null)
             {
@@ -227,12 +228,12 @@ public sealed partial class DesignerActions
     [System.Text.RegularExpressions.GeneratedRegex(@"(?<![\w.:])(?<p>[A-Za-z_][\w.-]*):(?=[A-Za-z_])")]
     private static partial System.Text.RegularExpressions.Regex ValuePrefix();
 
-    /// <summary>A plain pasted snippet written without xmlns gets the Avalonia namespace.</summary>
-    private static void GiveDefaultNamespace(XElement element)
+    /// <summary>A plain pasted snippet written without xmlns gets the document's framework namespace.</summary>
+    private void GiveDefaultNamespace(XElement element)
     {
         foreach (var e in element.DescendantsAndSelf().Where(e => e.Name.Namespace == XNamespace.None))
         {
-            e.Name = (XNamespace)ControlTypeInfo.AvaloniaXmlNamespace + e.Name.LocalName;
+            e.Name = _document.Profile.DefaultNamespace + e.Name.LocalName;
         }
     }
 

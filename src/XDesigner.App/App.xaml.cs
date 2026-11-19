@@ -61,7 +61,7 @@ public partial class App : Application
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         _runningMutex = new Mutex(initiallyOwned: false, RunningMutexName);
-        _renderHosts = new RenderHostManager(RenderHostManager.DefaultHostExecutable);
+        _renderHosts = new RenderHostManager(RenderHostManager.DefaultHostsDirectory);
         var shell = _shell = new ShellViewModel(_renderHosts, DispatcherQueue.GetForCurrentThread());
         shell.LoadSettings();
 
@@ -75,10 +75,10 @@ public partial class App : Application
         _mainWindow.Activate();
         _windowShown = true;
 
-        if (!File.Exists(RenderHostManager.DefaultHostExecutable))
-        {
-            shell.AppendLog($"The renderer is missing ({RenderHostManager.DefaultHostExecutable}). Reinstall xDesigner, or rebuild the solution.");
-        }
+        var installed = Core.Frameworks.FrameworkProfile.All.Where(p => p.IsSupported && _renderHosts.IsInstalled(p)).ToList();
+        shell.AppendLog(installed.Count > 0
+            ? $"Renderers installed: {string.Join(", ", installed.Select(p => p.DisplayName))}."
+            : $"No renderer is installed in {RenderHostManager.DefaultHostsDirectory}. Reinstall xDesigner, or rebuild the solution.");
 
         // Files passed on the command line (or "Open with") open as documents.
         foreach (var path in Environment.GetCommandLineArgs().Skip(1).Where(File.Exists))

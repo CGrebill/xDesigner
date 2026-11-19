@@ -79,12 +79,10 @@ public static class PropertyCategories
     /// Whether an attached property applies to a child of <paramref name="parent"/>: <c>Grid.*</c> only inside a Grid,
     /// <c>Canvas.*</c> inside a Canvas, <c>DockPanel.Dock</c> inside a DockPanel. ToolTip/ScrollViewer apply anywhere.
     /// </summary>
-    public static bool AppliesTo(PropertyInfoDto property, ControlTypeInfo? parent) => property.OwnerName switch
+    public static bool AppliesTo(PropertyInfoDto property, ControlTypeInfo? parent, Metadata.ControlCatalog catalog) => property.OwnerName switch
     {
         _ when !property.IsAttached => true,
-        "Grid" => parent?.DerivesFrom("Avalonia.Controls.Grid") == true,
-        "Canvas" => parent?.DerivesFrom("Avalonia.Controls.Canvas") == true,
-        "DockPanel" => parent?.DerivesFrom("Avalonia.Controls.DockPanel") == true,
+        "Grid" or "Canvas" or "DockPanel" or "AbsoluteLayout" or "FlexLayout" or "RelativePanel" => catalog.IsA(parent, property.OwnerName),
         _ => true,
     };
 

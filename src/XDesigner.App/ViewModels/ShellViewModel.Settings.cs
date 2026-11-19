@@ -10,6 +10,11 @@ public sealed partial class ShellViewModel
     /// <summary>The designer's settings; call <see cref="SaveSettings"/> after changing them.</summary>
     public DesignerSettings Settings { get; private set; } = new();
 
+    /// <summary>Where code is opened for editing (the external editor from Settings, for now).</summary>
+    public Services.ICodeEditorService CodeEditor => _codeEditor ??= new Services.ExternalCodeEditor(() => Settings);
+
+    private Services.ICodeEditorService? _codeEditor;
+
     /// <summary>Raised after <see cref="DesignerSettings.Recent"/> changed (menus and the start page rebuild).</summary>
     public event EventHandler? RecentChanged;
 

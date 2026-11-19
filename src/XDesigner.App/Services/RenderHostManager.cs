@@ -1,23 +1,33 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
-using XDesigner.Protocol.Metadata;
+using XDesigner.Core.Frameworks;
 using XDesigner.Core.Metadata;
 using XDesigner.Core.Rendering;
+using XDesigner.Protocol.Metadata;
 
 namespace XDesigner.App.Services;
 
+/// <summary>Which render host a document needs: its framework version, and the project assembly to load (if any).</summary>
+public readonly record struct HostKey(FrameworkProfile Profile, string? AssemblyPath)
+{
+    internal string Id => $"{Profile.Id}|{AssemblyPath}";
+
+    public override string ToString() => AssemblyPath is null ? $"{Profile.DisplayName}, no project" : $"{Profile.DisplayName}, {Path.GetFileName(AssemblyPath)}";
+}
+
 /// <summary>
-/// Owns the render host processes: one per user project assembly (or one for "no project"), started on
-/// first use, restarted automatically after a crash (at most <see cref="MaxRestartsPerMinute"/> times a
-/// minute), and falling back to the default theme when the project's own App can't start (§15.2, §16).
+/// Owns the render host processes: one per framework version and user project assembly (or "no project"), started on
+/// first use, restarted automatically after a crash (at most <see cref="MaxRestartsPerMinute"/> times a minute), and
+/// falling back to the default theme when the project's own App can't start (§15.2, §16). Each framework version's host
+/// is a separate exe in <c>renderhosts\{folder}</c> (<see cref="FrameworkProfile.HostFolder"/>).
 /// </summary>
 public sealed class RenderHostManager : IAsyncDisposable
 {
     public const int MaxRestartsPerMinute = 3;
 
-    private readonly string _hostExecutable;
+    private readonly string _hostsDirectory;
     private readonly Lock _lock = new();
-    private readonly Dictionary<string, Task<RenderHostConnection>> _hosts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (HostKey Key, Task<RenderHostConnection> Task)> _hosts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Queue<DateTime>> _starts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTime> _loadedStamps = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConditionalWeakTable<RenderHostConnection, Task<ControlCatalog>> _catalogs = new();
@@ -26,14 +36,20 @@ public sealed class RenderHostManager : IAsyncDisposable
     private readonly ConditionalWeakTable<RenderHostConnection, Task<string[]>> _fonts = new();
     private bool _disposed;
 
-    public RenderHostManager(string hostExecutable)
+    /// <param name="hostsDirectory">The folder holding one subfolder per render host (<c>renderhosts</c>).</param>
+    public RenderHostManager(string hostsDirectory)
     {
-        _hostExecutable = hostExecutable;
+        _hostsDirectory = hostsDirectory;
     }
 
-    /// <summary>Default location: <c>renderhost\</c> next to the app (see the CopyRenderHost build target).</summary>
-    public static string DefaultHostExecutable =>
-        Path.Combine(AppContext.BaseDirectory, "renderhost", "XDesigner.RenderHost.exe");
+    /// <summary>Default location: <c>renderhosts\</c> next to the app (see the CopyRenderHosts build target).</summary>
+    public static string DefaultHostsDirectory => Path.Combine(AppContext.BaseDirectory, "renderhosts");
+
+    /// <summary>Where the render host for a framework version is.</summary>
+    public string ExecutableFor(FrameworkProfile profile) => Path.Combine(_hostsDirectory, profile.HostFolder, profile.HostExecutable);
+
+    /// <summary>Whether the render host for a framework version is installed.</summary>
+    public bool IsInstalled(FrameworkProfile profile) => File.Exists(ExecutableFor(profile));
 
     /// <summary>Human-readable progress and problems, raised on any thread.</summary>
     public event Action<string>? Log;
@@ -41,25 +57,36 @@ public sealed class RenderHostManager : IAsyncDisposable
     /// <summary>A host was started (or restarted) and is ready.</summary>
     public event Action<RenderHostConnection>? HostReady;
 
-    /// <summary>Returns the live host for <paramref name="userAssemblyPath"/>, starting it if needed.</summary>
-    public async Task<RenderHostConnection> GetAsync(string? userAssemblyPath, CancellationToken cancellationToken = default)
+    /// <summary>Returns the live host for <paramref name="key"/>, starting it if needed.</summary>
+    public async Task<RenderHostConnection> GetAsync(HostKey key, CancellationToken cancellationToken = default)
     {
-        var key = userAssemblyPath ?? "";
         Task<RenderHostConnection> task;
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!_hosts.TryGetValue(key, out task!) || IsDead(task))
+            if (!_hosts.TryGetValue(key.Id, out var entry) || IsDead(entry.Task))
             {
-                ThrowIfRestartingTooOften(key);
-                if (userAssemblyPath is not null)
+                if (!key.Profile.IsSupported)
                 {
-                    _loadedStamps[key] = StampOf(userAssemblyPath); // the version this host will load
+                    throw new InvalidOperationException($"Designing {key.Profile.DisplayName} is coming in a later version of xDesigner.");
                 }
 
-                task = StartAsync(userAssemblyPath);
-                _hosts[key] = task;
+                if (!IsInstalled(key.Profile))
+                {
+                    throw new InvalidOperationException($"The {key.Profile.DisplayName} renderer isn't installed. Run the xDesigner installer again and include {key.Profile.DisplayName}.");
+                }
+
+                ThrowIfRestartingTooOften(key.Id);
+                if (key.AssemblyPath is not null)
+                {
+                    _loadedStamps[key.Id] = StampOf(key.AssemblyPath); // the version this host will load
+                }
+
+                entry = (key, StartAsync(key));
+                _hosts[key.Id] = entry;
             }
+
+            task = entry.Task;
         }
 
         return await task.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -67,7 +94,8 @@ public sealed class RenderHostManager : IAsyncDisposable
 
     /// <summary>The control types a running host knows about (fetched once per host process).</summary>
     public Task<ControlCatalog> GetCatalogAsync(RenderHostConnection connection, CancellationToken cancellationToken = default) =>
-        _catalogs.GetValue(connection, async c => new ControlCatalog(await c.Host.GetControlTypesAsync(CancellationToken.None).ConfigureAwait(false)))
+        _catalogs.GetValue(connection, async c => new ControlCatalog(
+                await c.Host.GetControlTypesAsync(CancellationToken.None).ConfigureAwait(false), ProfileOf(c)))
             .WaitAsync(cancellationToken);
 
     /// <summary>Properties of a control type (fetched once per type per host process).</summary>
@@ -80,26 +108,31 @@ public sealed class RenderHostManager : IAsyncDisposable
         _events.GetValue(connection, _ => new ConcurrentDictionary<string, Task<EventInfoDto[]>>())
             .GetOrAdd(typeFullName, name => connection.Host.GetEventsAsync(name, CancellationToken.None));
 
-    /// <summary>Font names for the FontFamily editor (fetched once per host process).</summary>
+    /// <summary>Font names the host can render (fetched once per host process).</summary>
     public Task<string[]> GetFontFamiliesAsync(RenderHostConnection connection) =>
         _fonts.GetValue(connection, c => c.Host.GetFontFamiliesAsync(CancellationToken.None));
 
+    /// <summary>The profile a running host reported in its handshake.</summary>
+    public static FrameworkProfile? ProfileOf(RenderHostConnection connection) =>
+        FrameworkProfile.All.FirstOrDefault(p => p.Id.ToString() == connection.Info.FrameworkId);
+
     /// <summary>
-    /// Raised (on any thread) after the host for an assembly path was stopped so the next request starts a fresh one
-    /// with the rebuilt assemblies (§11.2). Documents using it re-render and reload their control catalog.
+    /// Raised (on any thread) after the hosts for an assembly path were stopped so the next request starts fresh ones
+    /// with the rebuilt assemblies (§11.2). Documents using them re-render and reload their control catalog.
     /// </summary>
     public event Action<string?>? HostRestarted;
 
     /// <summary>
-    /// True when a host for <paramref name="userAssemblyPath"/> is running (or starting) with the assembly as it is on disk
-    /// now: a build that didn't change the assembly (up to date) needs no restart.
+    /// True when every host for <paramref name="userAssemblyPath"/> (there is one per framework version that uses it) is
+    /// running, or starting, with the assembly as it is on disk now: a build that didn't change it needs no restart.
     /// </summary>
     public bool IsCurrent(string userAssemblyPath)
     {
         lock (_lock)
         {
-            return _hosts.TryGetValue(userAssemblyPath, out var task) && !IsDead(task)
-                && _loadedStamps.TryGetValue(userAssemblyPath, out var stamp) && stamp == StampOf(userAssemblyPath);
+            var hosts = _hosts.Values.Where(h => string.Equals(h.Key.AssemblyPath, userAssemblyPath, StringComparison.OrdinalIgnoreCase)).ToList();
+            return hosts.Count > 0 && hosts.All(h => !IsDead(h.Task)
+                && _loadedStamps.TryGetValue(h.Key.Id, out var stamp) && stamp == StampOf(userAssemblyPath));
         }
     }
 
@@ -116,24 +149,28 @@ public sealed class RenderHostManager : IAsyncDisposable
     }
 
     /// <summary>
-    /// Stops the host for <paramref name="userAssemblyPath"/> (after a rebuild): the next render starts a new process that
-    /// loads the new assemblies. A planned restart doesn't count towards the crash limit.
+    /// Stops the hosts for <paramref name="userAssemblyPath"/> (after a rebuild): the next render starts new processes that
+    /// load the new assemblies. A planned restart doesn't count towards the crash limit.
     /// </summary>
     public async Task RestartAsync(string? userAssemblyPath)
     {
-        var key = userAssemblyPath ?? "";
-        Task<RenderHostConnection>? old;
+        List<Task<RenderHostConnection>> old;
         lock (_lock)
         {
-            _hosts.Remove(key, out old);
-            _starts.Remove(key);
+            var keys = _hosts.Where(h => string.Equals(h.Value.Key.AssemblyPath, userAssemblyPath, StringComparison.OrdinalIgnoreCase)).Select(h => h.Key).ToList();
+            old = keys.Select(k => _hosts[k].Task).ToList();
+            foreach (var key in keys)
+            {
+                _hosts.Remove(key);
+                _starts.Remove(key);
+            }
         }
 
-        if (old is not null)
+        foreach (var task in old)
         {
             try
             {
-                await (await old.ConfigureAwait(false)).DisposeAsync().ConfigureAwait(false);
+                await (await task.ConfigureAwait(false)).DisposeAsync().ConfigureAwait(false);
             }
             catch
             {
@@ -149,14 +186,13 @@ public sealed class RenderHostManager : IAsyncDisposable
     /// counts towards the crash limit and doesn't re-render by itself, so a control that hangs every time can't make the
     /// renderer restart in a loop; the next render (an edit, or Retry) starts a fresh host.
     /// </summary>
-    public async Task AbandonAsync(RenderHostConnection connection, string? userAssemblyPath)
+    public async Task AbandonAsync(RenderHostConnection connection, HostKey key)
     {
-        var key = userAssemblyPath ?? "";
         lock (_lock)
         {
-            if (_hosts.TryGetValue(key, out var task) && task.IsCompletedSuccessfully && task.Result == connection)
+            if (_hosts.TryGetValue(key.Id, out var entry) && entry.Task.IsCompletedSuccessfully && entry.Task.Result == connection)
             {
-                _hosts.Remove(key);
+                _hosts.Remove(key.Id);
             }
         }
 
@@ -165,21 +201,21 @@ public sealed class RenderHostManager : IAsyncDisposable
     }
 
     /// <summary>Clears the crash throttle so the next request may start the host again (user pressed Retry).</summary>
-    public void ResetRestartLimit(string? userAssemblyPath)
+    public void ResetRestartLimit(HostKey key)
     {
         lock (_lock)
         {
-            _starts.Remove(userAssemblyPath ?? "");
+            _starts.Remove(key.Id);
         }
     }
 
-    /// <summary>The host for an assembly, only if it is already running.</summary>
-    public RenderHostConnection? TryGetRunning(string? userAssemblyPath)
+    /// <summary>The host for a key, only if it is already running.</summary>
+    public RenderHostConnection? TryGetRunning(HostKey key)
     {
         lock (_lock)
         {
-            return _hosts.TryGetValue(userAssemblyPath ?? "", out var task) && task.IsCompletedSuccessfully && task.Result.IsAlive
-                ? task.Result
+            return _hosts.TryGetValue(key.Id, out var entry) && entry.Task.IsCompletedSuccessfully && entry.Task.Result.IsAlive
+                ? entry.Task.Result
                 : null;
         }
     }
@@ -190,7 +226,7 @@ public sealed class RenderHostManager : IAsyncDisposable
         lock (_lock)
         {
             _disposed = true;
-            hosts = [.. _hosts.Values];
+            hosts = [.. _hosts.Values.Select(h => h.Task)];
             _hosts.Clear();
         }
 
@@ -232,22 +268,22 @@ public sealed class RenderHostManager : IAsyncDisposable
         starts.Enqueue(now);
     }
 
-    private async Task<RenderHostConnection> StartAsync(string? userAssemblyPath)
+    private async Task<RenderHostConnection> StartAsync(HostKey key)
     {
-        var label = userAssemblyPath is null ? "no project" : Path.GetFileName(userAssemblyPath);
-        Log?.Invoke($"Starting renderer ({label})…");
+        Log?.Invoke($"Starting renderer ({key})…");
+        var executable = ExecutableFor(key.Profile);
 
         RenderHostConnection connection;
         try
         {
-            connection = await RenderHostConnection.StartAsync(new RenderHostStartInfo(_hostExecutable, userAssemblyPath)).ConfigureAwait(false);
+            connection = await RenderHostConnection.StartAsync(new RenderHostStartInfo(executable, key.AssemblyPath)).ConfigureAwait(false);
         }
-        catch (RenderHostStartException ex) when (ex.IsSetupFailure && userAssemblyPath is not null)
+        catch (RenderHostStartException ex) when (ex.IsSetupFailure && key.AssemblyPath is not null)
         {
-            Log?.Invoke($"The project's App could not start inside the renderer; using the default Fluent theme instead.{Environment.NewLine}{FirstLines(ex.ErrorOutput, 3)}");
+            Log?.Invoke($"The project's App could not start inside the renderer; using the default theme instead.{Environment.NewLine}{FirstLines(ex.ErrorOutput, 3)}");
             try
             {
-                connection = await RenderHostConnection.StartAsync(new RenderHostStartInfo(_hostExecutable, userAssemblyPath, UseUserApplication: false)).ConfigureAwait(false);
+                connection = await RenderHostConnection.StartAsync(new RenderHostStartInfo(executable, key.AssemblyPath, UseUserApplication: false)).ConfigureAwait(false);
             }
             catch (RenderHostStartException fallback)
             {
@@ -263,7 +299,14 @@ public sealed class RenderHostManager : IAsyncDisposable
         }
 
         var info = connection.Info;
-        Log?.Invoke($"Renderer ready ({label}): Avalonia {info.AvaloniaVersion}, app {info.ApplicationType}, design mode {(info.IsDesignMode ? "on" : "off")}.");
+        if (info.FrameworkId != key.Profile.Id.ToString())
+        {
+            // A damaged install (one host's files in another's folder) must not render a project with the wrong version.
+            await connection.DisposeAsync().ConfigureAwait(false);
+            throw new InvalidOperationException($"The renderer in {Path.GetDirectoryName(executable)} renders {info.FrameworkId}, not {key.Profile.DisplayName}. Reinstall xDesigner.");
+        }
+
+        Log?.Invoke($"Renderer ready ({key}): {key.Profile.Family} {info.FrameworkVersion}, app {info.ApplicationType}, design mode {(info.IsDesignMode ? "on" : "off")}.");
         foreach (var warning in info.Warnings)
         {
             Log?.Invoke($"Renderer warning: {warning}");

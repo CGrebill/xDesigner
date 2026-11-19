@@ -32,8 +32,7 @@ public sealed class ElementNode
     public string XmlNamespace => Element.Name.NamespaceName;
 
     /// <summary><c>x:Name</c> or <c>Name</c>, if set.</summary>
-    public string? Name =>
-        (string?)Element.Attribute(XName.Get("Name", XamlNamespaces.Xaml)) ?? (string?)Element.Attribute("Name");
+    public string? Name => RenderCopyBuilder.NameOf(Element);
 
     /// <summary>How the element is labelled in the outline and on the surface: <c>button1</c> or <c>[Button]</c>.</summary>
     public string DisplayName => Name ?? $"[{TypeName}]";

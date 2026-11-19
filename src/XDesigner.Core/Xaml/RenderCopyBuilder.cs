@@ -70,5 +70,13 @@ public static class RenderCopyBuilder
     /// </summary>
     public static bool IsObjectElement(XElement element) =>
         !element.Name.LocalName.Contains('.')
-        && element.Name.NamespaceName is not (XamlNamespaces.Xaml or XamlNamespaces.Design or XamlNamespaces.MarkupCompatibility);
+        && !Frameworks.FrameworkProfile.IsXamlLanguage(element.Name.Namespace)
+        && !Frameworks.FrameworkProfile.IsDesign(element.Name.Namespace)
+        && element.Name.NamespaceName != XamlNamespaces.MarkupCompatibility;
+
+    /// <summary>An element's <c>x:Name</c> (2006 or 2009 XAML namespace) or <c>Name</c>, if set.</summary>
+    public static string? NameOf(XElement element) =>
+        (string?)element.Attribute(XName.Get("Name", Frameworks.FrameworkProfile.Xaml2006Namespace))
+        ?? (string?)element.Attribute(XName.Get("Name", Frameworks.FrameworkProfile.Xaml2009Namespace))
+        ?? (string?)element.Attribute("Name");
 }

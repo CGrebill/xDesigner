@@ -30,7 +30,7 @@ public sealed class RenderHostFixture : IDisposable
 internal static class RenderXaml
 {
     public const string Namespaces =
-        """xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="d" xmlns:local="using:SampleAvaloniaApp.Controls" xmlns:t="using:XDesigner.RenderHost.Tests" xmlns:dsn="clr-namespace:XDesigner.RenderHost.DesignTime;assembly=XDesigner.RenderHost" """;
+        """xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="d" xmlns:local="using:SampleAvaloniaApp.Controls" xmlns:t="using:XDesigner.RenderHost.Tests" xmlns:dsn="urn:xdesigner:design-id" """;
 
     /// <summary>The sample's MainWindow as the designer would send it: design ids added, x:Class and Click removed.</summary>
     public const string SampleMainWindow =

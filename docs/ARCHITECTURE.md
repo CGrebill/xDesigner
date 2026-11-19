@@ -4,10 +4,20 @@ How xDesigner works, for contributors. Code comments refer to the sections here 
 
 ## 1. Purpose
 
-xDesigner is a WinForms-style visual designer for [Avalonia UI](https://avaloniaui.net/) 12. You drag controls from a
-toolbox onto a form, edit them in a properties window, double-click to create event handlers, and write only C#: the
-designer never shows XAML, it writes it. It designs Windows and UserControls of Avalonia 12 desktop projects, creates
-projects, and builds and runs them.
+xDesigner is a WinForms-style visual designer for C# UI frameworks: today [Avalonia UI](https://avaloniaui.net/) 11 and
+12; WinUI 3 and .NET MAUI are recognised and come next. You drag controls from a toolbox onto a form, edit them in a
+properties window, double-click to create event handlers, and write only C#: the designer never shows XAML, it writes
+it. It opens whole solutions (projects of different frameworks side by side, each drawn by its own framework), designs
+their Windows and UserControls, creates projects, and builds and runs them.
+
+### 1.0 Frameworks
+Everything framework-specific is described by a `FrameworkProfile` (`Core/Frameworks`): XML namespaces, file
+extension, the CLR names of the built-in controls the designer special-cases, how custom-control namespaces are written,
+value conventions, the toolbox list, the project template and which render host draws it. Every `XamlDocument` carries
+one (`Profile`, from its root's namespace, made exact by its project), and every `ControlCatalog` carries the one of the
+host that reported it. `FrameworkDetector` finds a project's framework and version from its build output (`deps.json`,
+`Avalonia.Base.dll`) or, before a build, from its project file. Each framework major version has its own render host
+(§14), since one process can't load two versions of a framework.
 
 ### 1.1 Goals
 - Real Avalonia rendering of the form being designed, including the project's theme, fonts and custom controls.
@@ -17,8 +27,8 @@ projects, and builds and runs them.
 
 ### 1.2 Non-goals
 Authoring data bindings, styles, resources, templates or animations (existing ones are kept and shown read-only);
-showing or editing XAML text; mobile/browser targets; Avalonia versions before 12; running the designer itself on
-anything but Windows.
+showing or editing XAML text (for now: a code editor is on the roadmap, behind `ICodeEditorService`); mobile/browser
+targets; Avalonia versions before 11.1; running the designer itself on anything but Windows.
 
 ### 1.3 Design decisions
 | Decision | Why |
@@ -42,13 +52,14 @@ anything but Windows.
 │  Properties/Events │ Output (Output, Build, Run, Events) │ status bar                                  │
 │  ViewModels (CommunityToolkit.Mvvm) ──► XDesigner.Core (no UI): XamlDocument, commands/undo,         │
 │                                         placement, snapping, naming, code-behind writer, projects     │
-│  RenderHostManager ── named pipe, StreamJsonRpc + MessagePack ──┐                                      │
+│  RenderHostManager ── named pipe, StreamJsonRpc + MessagePack ──┐   (one host per framework version     │
+│                                                                 │    and project build)                 │
 └─────────────────────────────────────────────────────────────────┼──────────────────────────────────────┘
                                                                   ▼
-┌──────────────────── XDesigner.RenderHost (.NET 10, one process per project build) ───────────────────┐
-│  Avalonia 12 headless + Skia · the project's App (theme, fonts) · project assemblies loaded from memory │
-│  XamlRenderer (runtime XAML loader, design mode) → pixels + layout tree · metadata · effective values │
-└───────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌────────── renderhosts\avalonia12, renderhosts\avalonia11 (.NET 10, one process per project build) ─────────┐
+│  Avalonia 12 or 11 headless + Skia · the project's App (theme, fonts) · project assemblies loaded from memory │
+│  XamlRenderer (runtime XAML loader, design mode) → pixels + layout tree · metadata · effective values       │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 3. Solution structure
@@ -57,15 +68,16 @@ anything but Windows.
 |---|---|---|
 | `XDesigner.Protocol` | net10.0 | StreamJsonRpc, MessagePack |
 | `XDesigner.Core` | net10.0 | Protocol, Microsoft.CodeAnalysis.CSharp |
-| `XDesigner.RenderHost` | net10.0 exe, win-x64 | Protocol, Avalonia 12 (Headless, Skia, Markup.Xaml.Loader, Themes.Fluent, Fonts.Inter) |
+| `XDesigner.RenderHost.Avalonia` (`…Avalonia12.csproj`) | net10.0 exe, win-x64 | Protocol, Avalonia 12 (Headless, Skia, Markup.Xaml.Loader, Themes.Fluent, Fonts.Inter) |
+| `XDesigner.RenderHost.Avalonia11` | net10.0 exe, win-x64 | The same source, `AVALONIA11` defined, Avalonia 11.3 (`VersionOverride`) |
 | `XDesigner.App` | net10.0-windows10.0.19041.0, x64, WinUI 3 | Core, Protocol, Windows App SDK, CommunityToolkit.Mvvm, CommunityToolkit.WinUI.Controls.Sizers |
-| `tests/*` | xUnit v3 | Core tests are pure; RenderHost tests start the real renderer against `samples/SampleAvaloniaApp` |
+| `tests/*` | xUnit v3 | Core tests are pure; the render host tests start the real renderers against `samples/SampleAvaloniaApp` (12) and `samples/SampleAvalonia11App` (11), from shared sources |
 
-Core and Protocol reference neither Avalonia nor WinUI, so editing logic is unit-testable and the renderer's Avalonia
-version never leaks into the app. The app doesn't reference the render host: a build target copies the host's output
-into `renderhost\` next to the app, and publishing publishes it there self-contained (§17). Package versions are
-central in `Directory.Packages.props`. Templates and the toolbox list are embedded resources of Core
-(`Core/Templates`, `Core/Toolbox/toolbox.json`).
+Core and Protocol reference no UI framework, so editing logic is unit-testable and a renderer's framework version never
+leaks into the app. The app doesn't reference the render hosts: a build target copies each host's output into
+`renderhosts\{folder}\` next to the app, and publishing publishes them there self-contained (§17). Package versions are
+central in `Directory.Packages.props` (`AvaloniaVersion`, `Avalonia11Version`). Templates and the toolbox lists are
+embedded resources of Core (`Core/Templates`, `Core/Toolbox/toolbox.{family}.json`).
 
 ## 4. Protocol (`XDesigner.Protocol`)
 
@@ -74,7 +86,7 @@ bytes). The host is the server; the app is the client. `IRenderHost`:
 
 | Method | Purpose |
 |---|---|
-| `HandshakeAsync(protocolVersion)` | Versions (Avalonia, protocol), the project's App type, design mode; a mismatch means a stale renderer |
+| `HandshakeAsync(protocolVersion)` | Protocol version, framework id (`Avalonia12`) and version, the project's App type, design mode; a protocol mismatch means a stale renderer, a framework mismatch a damaged install |
 | `RenderAsync(RenderRequest)` | Render one document: pixels, layout tree, root kind, window title, or an error |
 | `GetControlTypesAsync()` | All designable control types (toolbox, content models, default events) |
 | `GetPropertiesAsync(type)` / `GetEventsAsync(type)` | Property and event metadata of a type |
@@ -87,6 +99,9 @@ size, the document id and a base URI (`avares://{assembly}/{path}`) so `/Assets/
 resources. `RenderResult` carries premultiplied BGRA pixels (copied straight into a WinUI `WriteableBitmap`) and an
 `ElementLayout` tree: design id, bounds, visibility, margin/padding and panel information (Grid row/column offsets,
 orientation). `ProtocolInfo.Version` is bumped whenever a DTO or the interface changes.
+
+The design ids of a render copy (§5.4) use a neutral namespace, `urn:xdesigner:design-id`: each host maps it to its own
+attached property, whose real namespace depends on the framework and on the host's assembly name.
 
 ## 5. Document model (`Core/Xaml`)
 
@@ -113,9 +128,10 @@ The renderer reports each type's `ContentModel`, which decides where children go
 | Inlines / None | TextBlock, Image, shapes | not a container |
 
 ### 5.3 Namespaces
-Avalonia controls use the default namespace. Custom controls get `xmlns:{prefix}="using:{ClrNamespace}"` on the root
-the first time they're used (`local` for the project's namespace, otherwise the last namespace segment). Design-time
-attributes use `d:` with `mc:Ignorable`.
+The framework's controls use the default namespace (the document profile's `DefaultNamespace`). Custom controls get
+`xmlns:{prefix}="using:{ClrNamespace}"` on the root the first time they're used (`local` for the project's namespace,
+otherwise the last namespace segment). Design-time attributes use `d:` (the profile's `DesignNamespace`) with
+`mc:Ignorable`; `x:` is the profile's XAML namespace (2006, or 2009 for MAUI). Names are read under either `x:` URI.
 
 ### 5.4 Render copy
 `BuildRenderCopy` clones the document, adds `dsn:DesignId.Value="{id}"` to every object element, and applies view-only
@@ -160,7 +176,8 @@ wrap in), items, grid definitions and design size; each builds one composite com
 Moving to another container removes the attached properties of the old one. Alt keeps the current parent.
 
 ### 7.2 Toolbox defaults
-`toolbox.json` lists the toolbox categories and the attributes each control gets when dropped (a Button gets
+`toolbox.{family}.json` (one per framework family, `FrameworkProfile.ToolboxResource`; `toolbox.avalonia.json` today)
+lists the toolbox categories and the attributes each control gets when dropped (a Button gets
 `Content="button1"`, a TextBox a width, and so on).
 
 ### 7.3 Snapping
@@ -208,7 +225,7 @@ renderer (§14.2).
 ## 9. Panels
 
 ### 9.1 Toolbox
-Categories from `toolbox.json` (Common, Layout, Containers & Items, Input & Pickers, Text, Shapes), then **Project**
+Categories from the framework's toolbox list (Common, Layout, Containers & Items, Input & Pickers, Text, Shapes), then **Project**
 (the project's own controls) and **Other**. Built-in entries missing from the renderer's metadata are hidden. Search
 filters all categories; drag to the surface, or double-click to add to the selected container.
 
@@ -269,16 +286,21 @@ Undo removes only the XAML link; the method stays. Renaming or deleting a contro
 ## 11. Projects, build and run (`Core/Project`)
 
 ### 11.1 Opening
-`.csproj`, `.sln` or `.slnx` (a solution lists its projects with XAML files). Properties come from
-`dotnet msbuild -getProperty` (TargetPath, AssemblyName, RootNamespace, TargetFramework, OutputType). A file opened on
-its own finds its project and last build heuristically (`ProjectOutputLocator`) so custom controls still render.
-Projects not on Avalonia 12 are rejected with an explanation. The .NET SDK is run with English output, no logo, no
-telemetry and the classic logger, so its output can be parsed.
+`.csproj`, `.sln` or `.slnx` opens as a `SolutionModel` (a project on its own is a solution of one): every C# project is
+evaluated in parallel with `dotnet msbuild -getProperty` (TargetPath, AssemblyName, RootNamespace, TargetFramework,
+OutputType; a multi-targeted project is read for its desktop framework, else its Windows one), and `FrameworkDetector`
+finds each project's framework and version. Projects may mix frameworks and versions; each document belongs to the
+innermost project containing it and is drawn by that project's framework version. The startup project (what Run starts,
+what Project ▸ Add adds to) is the first designable app, and can be changed in Solution Explorer. A file opened on its
+own finds its project and last build heuristically (`ProjectOutputLocator`) so custom controls still render. Projects
+on a framework or version the designer can't render are explained (`DetectedFramework.Problem`). The .NET SDK is run
+with English output, no logo, no telemetry and the classic logger, so its output can be parsed.
 
 ### 11.2 Build
-`dotnet build` in the project folder (its `global.json` picks the SDK), output streamed to Output › Build, errors
-parsed. Builds run on open, on Rebuild and before Run; unsaved files of the project are saved first. A successful build
-restarts that project's renderer. Because the renderer loads project assemblies from memory, builds outside the
+`dotnet build` of the solution (or the single project) in its folder (its `global.json` picks the SDK), output streamed
+to Output › Build, errors and warnings parsed into Output › Error List (double-click one to go to it). Builds run on
+open, on Rebuild and before Run; unsaved files of the solution are saved first. A successful build restarts the
+renderers of the projects whose assemblies changed. Because the renderer loads project assemblies from memory, builds outside the
 designer (VS Code, Visual Studio) never hit locked files, and the designer reloads after them.
 
 ### 11.3 Run
@@ -286,7 +308,8 @@ Save, build, `dotnet run --no-build`; output to Output › Run; Stop kills the p
 stopped before builds and when the designer closes.
 
 ### 11.4 New project
-A name, a folder and a title create an Avalonia 12 desktop app from Core's embedded template (no `dotnet new`): a
+A framework version (Avalonia 12 or 11), a name, a folder and a title create a desktop app from Core's embedded
+template (no `dotnet new`; both Avalonia versions share it, with the profile's `TemplateVersion`): a
 csproj with an `Assets` resource item, `Program.cs` with an explicit `Main`, `App` and `MainWindow` with code-behind,
 `app.manifest`, `global.json` and `.gitignore`. It is then built and its main window opened.
 
@@ -314,8 +337,14 @@ another document, drops attached properties of other panel kinds and offsets pos
 
 ## 14. Render host (`XDesigner.RenderHost`)
 
+### 14.0 One host per framework version
+`XDesigner.RenderHost.Avalonia` is built twice: against Avalonia 12 (`XDesigner.RenderHost.Avalonia12.exe`) and, with
+`AVALONIA11` defined for the few API differences (PNG encoding), against Avalonia 11.3
+(`XDesigner.RenderHost.Avalonia11.exe`); Avalonia 11.1 and 11.2 projects run on the 11.3 host. The rest of this section
+describes the Avalonia host; both behave alike.
+
 ### 14.1 Startup
-`XDesigner.RenderHost.exe --pipe {name} --parent-pid {pid} [--assembly {project dll}] [--no-user-app]` (also
+`XDesigner.RenderHost.Avalonia{11|12}.exe --pipe {name} --parent-pid {pid} [--assembly {project dll}] [--no-user-app]` (also
 `--render {file} --out {png}` for one-off renders, and `--version`). It exits when the app process does. Design mode is
 switched on before the project's App is created (`Design.IsDesignMode` has only an internal setter in Avalonia 12, so
 it's set by reflection; the runtime loader's `DesignMode` flag doesn't set it). The project's assemblies load from
@@ -349,7 +378,12 @@ For an element of the last render: each property's value and source (local, styl
 ### 15.1 Shell
 `MainWindow` (split into partial files by area: Chrome, Editing, Design, Images, Notify, Preview, Project, Run,
 Settings, Help) with content extended into the title bar, which holds the menus (File, Edit, View, Project, Help) and
-the toolbar. A notification strip under the title bar slides open for confirmations, warnings and errors (actions keep
+the toolbar. The top of the right column holds **Solution Explorer** (the solution's projects with their framework,
+startup in bold, folders, XAML and C# files with code-behind under its XAML file; double-click opens XAML in the
+designer and other files in the code editor; right-click sets the startup project) and the Document Outline, as tabs.
+Output has an **Error List**. View ▸ Toolbox and Output show or hide those panes (saved in settings). Code is opened
+through `ICodeEditorService` (today the external editor of §15.3): the seam where an editor built into the designer
+will go. A notification strip under the title bar slides open for confirmations, warnings and errors (actions keep
 it open longer; decisions stay). View models: `ShellViewModel` (documents, project, build/run, settings, logs),
 `DocumentViewModel` (document, undo, selection, preview state, render scheduling), `OutlineNodeViewModel`. Last-chance
 handlers report unexpected exceptions in Output, a notification and `%LOCALAPPDATA%\xDesigner\errors.log` (capped at
@@ -357,7 +391,8 @@ handlers report unexpected exceptions in Output, a notification and `%LOCALAPPDA
 the app is open.
 
 ### 15.2 Renderer management
-`RenderHostManager`: one host per project assembly ("no project" is one more), started on first use, restarted after a
+`RenderHostManager`: one host per `HostKey` (framework profile and project assembly; "no project" is one more), the
+profile's exe from `renderhosts\{HostFolder}\`, started on first use, restarted after a
 crash at most three times a minute (then Retry), restarted after a build that changed the assembly. Requests interrupted
 by a planned restart are sent once more to the new host. `RenderHostConnection` (Core) starts the process, connects,
 handshakes, keeps recent stderr for diagnostics, and kills the process if a shutdown request doesn't end it.
@@ -389,7 +424,8 @@ level only when no text box has focus.
 `global.json` pins the .NET 10 SDK. `Directory.Build.props` sets the version, product metadata, nullable, the
 recommended analyzers and code-style enforcement, and treats warnings as errors in Release. The app is unpackaged and
 self-contained (Windows App SDK included), x64 only. Release publishing (`dotnet publish src/XDesigner.App -c Release`)
-is self-contained and ReadyToRun, and publishes the render host self-contained into `renderhost\`. To keep it lean, the
+is self-contained and ReadyToRun, and publishes each render host self-contained into `renderhosts\{folder}\`. The
+installer has one component per render host, so users can leave out frameworks they don't design. To keep it lean, the
 app excludes the Windows App SDK's AI, ML, Search and Widgets parts, uses the non-WPF build of
 `Microsoft.VisualStudio.Threading` (its Windows build would pull in all of WPF), and publishes no `.pdb` files.
 `EnableMsixTooling` makes the unpackaged app's resources (`xDesigner.pri`, compiled XAML) part of the publish.
@@ -404,8 +440,10 @@ folder on upgrade, and whose uninstaller removes the install folder, shortcuts, 
 - `tests/XDesigner.Core.Tests`: the document model (byte-identical round trips, every command's undo), placement,
   snapping, naming, values, clipboard, code-behind writing (namespaces, encodings, line endings, line numbers),
   project templates and reading, settings, assets.
-- `tests/XDesigner.RenderHost.Tests`: the renderer against `samples/SampleAvaloniaApp` (pixel sizes, layout, metadata,
-  custom controls, errors, project images, the pipe connection and crash handling).
+- `tests/XDesigner.RenderHost.Tests`: the Avalonia 12 renderer against `samples/SampleAvaloniaApp` (pixel sizes, layout,
+  metadata, custom controls, errors, project images, the pipe connection and crash handling).
+- `tests/XDesigner.RenderHost.Avalonia11.Tests`: the same test sources (`AVALONIA11`) against the Avalonia 11 renderer
+  and `samples/SampleAvalonia11App`, the same app on Avalonia 11.
 - Tests marked `Category=Slow` run `dotnet build` or MSBuild and need the SDK and NuGet packages.
 - The UI is checked by hand in the running app before a release: designing, events and Run on a new project; every
   panel and editor; preview; images; error and hang handling; external edits; install, upgrade and uninstall.

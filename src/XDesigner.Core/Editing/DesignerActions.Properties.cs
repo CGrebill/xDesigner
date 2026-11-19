@@ -119,7 +119,7 @@ public sealed partial class DesignerActions
         var commands = new List<IUndoableCommand>();
         if (existing == xName && _document.Xml.Root!.GetPrefixOfNamespace(XamlNs) is null)
         {
-            commands.Add(new SetAttributeCommand(_document.Root.Id, XNamespace.Xmlns + "x", XamlNamespaces.Xaml));
+            commands.Add(new SetAttributeCommand(_document.Root.Id, XNamespace.Xmlns + "x", XamlNs.NamespaceName));
         }
 
         if (old is null && existing == xName)
@@ -148,7 +148,7 @@ public sealed class PrependAttributeCommand(int nodeId, XName attribute, string 
         var element = document.FindById(nodeId)?.Element
             ?? throw new InvalidOperationException($"Element #{nodeId} is no longer in the document.");
         var attributes = element.Attributes().ToList();
-        var firstNonNamespace = attributes.FindIndex(a => !a.IsNamespaceDeclaration && a.Name.Namespace != XamlNamespaces.Xaml);
+        var firstNonNamespace = attributes.FindIndex(a => !a.IsNamespaceDeclaration && !Frameworks.FrameworkProfile.IsXamlLanguage(a.Name.Namespace));
         attributes.Insert(firstNonNamespace < 0 ? attributes.Count : firstNonNamespace, new XAttribute(attribute, value));
         element.ReplaceAttributes(attributes);
     }

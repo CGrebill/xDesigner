@@ -15,7 +15,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Toolbox/toolbox.json" LogicalName="XDesigner.Core.Toolbox.toolbox.json" />
+    <!-- One curated toolbox list per framework family (toolbox.avalonia.json, …), chosen by FrameworkProfile.ToolboxResource. -->
+    <EmbeddedResource Include="Toolbox/toolbox.*.json" LogicalName="XDesigner.Core.Toolbox.%(Filename)%(Extension)" />
     <!-- New project / new item templates (§11.4, §11.5): text with $tokens$, not part of this project's build. -->
     <Compile Remove="Templates/**" />
     <None Remove="Templates/**" />

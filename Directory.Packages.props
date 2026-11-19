@@ -2,6 +2,8 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <AvaloniaVersion>12.1.6</AvaloniaVersion>
+    <!-- The Avalonia 11 render host, its sample and the Avalonia 11 project template (VersionOverride). -->
+    <Avalonia11Version>11.3.23</Avalonia11Version>
   </PropertyGroup>
   <ItemGroup Label="Avalonia (RenderHost, samples)">
     <PackageVersion Include="Avalonia" Version="$(AvaloniaVersion)" />

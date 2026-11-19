@@ -51,6 +51,12 @@ public sealed class DesignerSettings
 
     public double? OutputHeight { get; set; }
 
+    /// <summary>View ▸ Toolbox.</summary>
+    public bool ShowToolbox { get; set; } = true;
+
+    /// <summary>View ▸ Output.</summary>
+    public bool ShowOutput { get; set; } = true;
+
     /// <summary>Puts <paramref name="path"/> first in <see cref="Recent"/>.</summary>
     public void AddRecent(string path)
     {

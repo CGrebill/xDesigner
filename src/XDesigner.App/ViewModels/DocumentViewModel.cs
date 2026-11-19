@@ -32,6 +32,7 @@ public sealed partial class DocumentViewModel : ObservableObject
         FilePath = filePath;
         Xaml = xaml;
         Project = project;
+        ApplyProjectProfile(project);
         _hosts = hosts;
         Undo = new UndoManager(xaml);
         Actions = new DesignerActions(xaml, Undo);
@@ -104,10 +105,28 @@ public sealed partial class DocumentViewModel : ObservableObject
     {
         var changed = !string.Equals(project?.AssemblyPath, Project?.AssemblyPath, StringComparison.OrdinalIgnoreCase);
         Project = project;
+
+        changed |= ApplyProjectProfile(project);
+
         if (changed)
         {
             RendererRestarted();
         }
+    }
+
+    /// <summary>
+    /// The project says which version of the document's framework it is (Avalonia 11 or 12): that picks the renderer.
+    /// Returns whether the profile changed.
+    /// </summary>
+    private bool ApplyProjectProfile(ProjectOutput? project)
+    {
+        if (project?.Profile is { } profile && profile.Family == Xaml.Profile.Family && profile != Xaml.Profile)
+        {
+            Xaml.Profile = profile;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>The renderer for this document was restarted (rebuild): fetch the catalog again and re-render.</summary>
@@ -119,6 +138,9 @@ public sealed partial class DocumentViewModel : ObservableObject
 
     /// <summary>The project assembly the renderer loads (custom controls, App styles), if the project has been built.</summary>
     public string? UserAssemblyPath => Project?.AssemblyPath;
+
+    /// <summary>The render host this document needs: its framework version's, loading its project's assembly.</summary>
+    public HostKey HostKey => new(Xaml.Profile, UserAssemblyPath);
 
     [ObservableProperty]
     public partial double Zoom { get; set; } = 1;
@@ -217,7 +239,7 @@ public sealed partial class DocumentViewModel : ObservableObject
     /// <summary>Retry after the renderer stopped.</summary>
     public void Retry()
     {
-        _hosts.ResetRestartLimit(UserAssemblyPath);
+        _hosts.ResetRestartLimit(HostKey);
         Render(_lastScale);
     }
 
@@ -330,7 +352,7 @@ public sealed partial class DocumentViewModel : ObservableObject
     /// <summary>Properties of a control type from this document's renderer; null while it isn't running or on failure.</summary>
     public async Task<IReadOnlyList<PropertyInfoDto>?> GetPropertiesAsync(string typeFullName)
     {
-        if (_hosts.TryGetRunning(UserAssemblyPath) is not { } host)
+        if (_hosts.TryGetRunning(HostKey) is not { } host)
         {
             return null;
         }
@@ -348,7 +370,7 @@ public sealed partial class DocumentViewModel : ObservableObject
     /// <summary>Effective values of an element in the latest render, by property key; null when unavailable.</summary>
     public async Task<IReadOnlyDictionary<string, PropertyValueDto>?> GetValuesAsync(int id)
     {
-        if (_hosts.TryGetRunning(UserAssemblyPath) is not { } host)
+        if (_hosts.TryGetRunning(HostKey) is not { } host)
         {
             return null;
         }
@@ -380,7 +402,7 @@ public sealed partial class DocumentViewModel : ObservableObject
     /// <summary>Events of a control type from this document's renderer; null while it isn't running or on failure.</summary>
     public async Task<IReadOnlyList<EventInfoDto>?> GetEventsAsync(string typeFullName)
     {
-        if (_hosts.TryGetRunning(UserAssemblyPath) is not { } host)
+        if (_hosts.TryGetRunning(HostKey) is not { } host)
         {
             return null;
         }
@@ -477,7 +499,7 @@ public sealed partial class DocumentViewModel : ObservableObject
     {
         try
         {
-            return _hosts.TryGetRunning(UserAssemblyPath) is { } host ? await _hosts.GetFontFamiliesAsync(host) : [];
+            return _hosts.TryGetRunning(HostKey) is { } host ? await _hosts.GetFontFamiliesAsync(host) : [];
         }
         catch
         {
@@ -512,7 +534,7 @@ public sealed partial class DocumentViewModel : ObservableObject
     public async Task CloseAsync()
     {
         _scheduler.Cancel();
-        if (_hosts.TryGetRunning(UserAssemblyPath) is { } host)
+        if (_hosts.TryGetRunning(HostKey) is { } host)
         {
             try
             {
@@ -534,8 +556,8 @@ public sealed partial class DocumentViewModel : ObservableObject
     {
         for (var attempt = 0; ; attempt++)
         {
-            var path = UserAssemblyPath;
-            var host = await _hosts.GetAsync(path, cancellationToken).ConfigureAwait(false);
+            var key = HostKey;
+            var host = await _hosts.GetAsync(key, cancellationToken).ConfigureAwait(false);
             try
             {
                 // Watchdog (§14.2): a control stuck in a loop blocks the host's UI thread, and the call would never return.
@@ -547,12 +569,12 @@ public sealed partial class DocumentViewModel : ObservableObject
                 catch (TimeoutException)
                 {
                     _ = render.ContinueWith(t => _ = t.Exception, TaskScheduler.Default); // observed: it fails once the host is gone
-                    await _hosts.AbandonAsync(host, path).ConfigureAwait(false);
+                    await _hosts.AbandonAsync(host, key).ConfigureAwait(false);
                     throw new TimeoutException(
                         $"Drawing {Title} took more than {RenderTimeout.TotalSeconds:0} seconds (a control may be stuck in a loop), so the renderer was stopped. Undo the last change, or fix the control and rebuild, then press Retry.");
                 }
             }
-            catch (Exception ex) when (ex is not TimeoutException && attempt == 0 && !cancellationToken.IsCancellationRequested && (!host.IsAlive || path != UserAssemblyPath))
+            catch (Exception ex) when (ex is not TimeoutException && attempt == 0 && !cancellationToken.IsCancellationRequested && (!host.IsAlive || key != HostKey))
             {
                 // The host this request went to is gone (or the document switched builds): try the current one.
             }
@@ -589,7 +611,7 @@ public sealed partial class DocumentViewModel : ObservableObject
         _catalogRequested = true;
         try
         {
-            var host = await _hosts.GetAsync(UserAssemblyPath);
+            var host = await _hosts.GetAsync(HostKey);
             UserAssemblyName = host.Info.UserAssemblyName;
             Catalog = await _hosts.GetCatalogAsync(host);
         }

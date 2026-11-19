@@ -16,8 +16,12 @@ public enum ItemKind
 /// </summary>
 public static class ProjectTemplates
 {
-    /// <summary>The Avalonia version new projects reference (the one the designer's renderer uses).</summary>
-    public const string AvaloniaVersion = "12.1.6";
+    /// <summary>The Avalonia version new Avalonia 12 projects reference (the one the designer's Avalonia 12 renderer uses).</summary>
+    public static string AvaloniaVersion => Frameworks.FrameworkProfile.Avalonia12.TemplateVersion!;
+
+    /// <summary>The framework versions the designer can create new projects for, newest first.</summary>
+    public static IReadOnlyList<Frameworks.FrameworkProfile> CreatableFrameworks { get; } =
+        Frameworks.FrameworkProfile.All.Where(p => p.IsSupported && p.ProjectTemplate is not null).OrderByDescending(p => p.MajorVersion).ToList();
 
     private const string Prefix = "XDesigner.Core.Templates/";
 
@@ -75,8 +79,15 @@ public static class ProjectTemplates
     /// Creates <c>{parent}/{name}/{name}.csproj</c> with Program, App, MainWindow, manifest, Assets, global.json and .gitignore.
     /// Returns the project path. Fails if the folder exists and isn't empty.
     /// </summary>
-    public static string CreateApp(string parentDirectory, string name, string title)
+    /// <param name="framework">Which framework version to create it for (Avalonia 12 when omitted).</param>
+    public static string CreateApp(string parentDirectory, string name, string title, Frameworks.FrameworkProfile? framework = null)
     {
+        framework ??= Frameworks.FrameworkProfile.Avalonia12;
+        if (framework.ProjectTemplate is not { } template || framework.TemplateVersion is not { } frameworkVersion)
+        {
+            throw new ProjectException($"The designer can't create {framework.DisplayName} projects yet.");
+        }
+
         if (ValidateProjectName(name) is { } problem)
         {
             throw new ProjectException(problem);
@@ -94,11 +105,11 @@ public static class ProjectTemplates
             // An attribute value: a leading '{' would make it a markup extension, so it gets the {} escape.
             ["$title$"] = System.Security.SecurityElement.Escape(
                 Properties.XamlValueSerializer.ToAttribute(string.IsNullOrWhiteSpace(title) ? name : title.Trim())),
-            ["$avaloniaversion$"] = AvaloniaVersion,
+            ["$avaloniaversion$"] = frameworkVersion,
         };
 
         Directory.CreateDirectory(Path.Combine(dir, "Assets"));
-        foreach (var (file, text) in Templates("AvaloniaApp/"))
+        foreach (var (file, text) in Templates(template + "/"))
         {
             var target = file switch
             {

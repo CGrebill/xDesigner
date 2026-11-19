@@ -31,17 +31,27 @@ public sealed record ItemsKind(string ItemType, string TextProperty, bool Nested
 
 public static class ItemsEditing
 {
-    /// <summary>The kind of items an Items control holds, or null when the editor doesn't support it.</summary>
-    public static ItemsKind? KindOf(ControlTypeInfo? type) => type switch
+    /// <summary>
+    /// The kind of items an Items control holds, or null when the editor doesn't support it. The table is the
+    /// framework's (§9.4); WinUI and MAUI get theirs with their render hosts.
+    /// </summary>
+    public static ItemsKind? KindOf(ControlCatalog catalog, ControlTypeInfo? type)
     {
-        null => null,
-        _ when type.DerivesFrom("Avalonia.Controls.TabControl") => new("TabItem", "Header", false, "tab"),
-        _ when type.DerivesFrom("Avalonia.Controls.Menu") || type.DerivesFrom("Avalonia.Controls.ContextMenu") => new("MenuItem", "Header", true, "menu item"),
-        _ when type.DerivesFrom("Avalonia.Controls.TreeView") => new("TreeViewItem", "Header", true, "node"),
-        _ when type.DerivesFrom("Avalonia.Controls.ComboBox") => new("ComboBoxItem", "Content", false, "item"),
-        _ when type.DerivesFrom("Avalonia.Controls.ListBox") => new("ListBoxItem", "Content", false, "item"),
-        _ => null,
-    };
+        if (type is null || catalog.Profile.Family != Frameworks.FrameworkFamily.Avalonia)
+        {
+            return null;
+        }
+
+        return true switch
+        {
+            _ when catalog.IsA(type, "TabControl") => new("TabItem", "Header", false, "tab"),
+            _ when catalog.IsA(type, "Menu") || catalog.IsA(type, "ContextMenu") => new("MenuItem", "Header", true, "menu item"),
+            _ when catalog.IsA(type, "TreeView") => new("TreeViewItem", "Header", true, "node"),
+            _ when catalog.IsA(type, "ComboBox") => new("ComboBoxItem", "Content", false, "item"),
+            _ when catalog.IsA(type, "ListBox") => new("ListBoxItem", "Content", false, "item"),
+            _ => null,
+        };
+    }
 
     /// <summary>The control's current items as drafts (with sub-items for nested kinds).</summary>
     public static List<ItemDraft> Read(ElementNode control, ItemsKind kind)
@@ -111,7 +121,7 @@ public sealed partial class DesignerActions
     {
         var existing = ItemsEditing.Items(container.Element);
         var into = ItemsEditing.ItemsElement(container.Element)?.Name;
-        var ns = (XNamespace)XamlNamespaces.Avalonia;
+        var ns = _document.Profile.DefaultNamespace;
 
         // Text changes on items that stay.
         foreach (var draft in drafts.Where(d => d.ExistingId is not null && d.TextEditable))

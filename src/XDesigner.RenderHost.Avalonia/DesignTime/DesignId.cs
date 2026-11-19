@@ -9,8 +9,12 @@ namespace XDesigner.RenderHost.DesignTime;
 /// </summary>
 public sealed class DesignId
 {
-    /// <summary>XML namespace the app declares as <c>xmlns:dsn</c> in the render copy.</summary>
-    public const string XmlNamespace = Protocol.ProtocolInfo.DesignIdXmlNamespace;
+    /// <summary>
+    /// Where this property lives in XAML. The app writes the neutral <see cref="Protocol.ProtocolInfo.DesignIdXmlNamespace"/>;
+    /// the sanitizer maps it here (this assembly's name differs per Avalonia version).
+    /// </summary>
+    public static readonly string XmlNamespace =
+        $"clr-namespace:{typeof(DesignId).Namespace};assembly={typeof(DesignId).Assembly.GetName().Name}";
 
     /// <summary>0 means "not a designed element" (e.g. a template part).</summary>
     public static readonly AttachedProperty<int> ValueProperty =

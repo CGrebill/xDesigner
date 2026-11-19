@@ -34,13 +34,17 @@ Step "Publish (self-contained, ReadyToRun) to $publishDir"
 if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
 Invoke-Checked "Publish" { dotnet publish src\XDesigner.App -c Release -o $publishDir -nologo -v:minimal }
 
-foreach ($required in "xDesigner.exe", "xDesigner.pri", "LICENSE.txt", "THIRD-PARTY-NOTICES.txt", "renderhost\XDesigner.RenderHost.exe") {
+# One render host per framework version, in renderhosts\{folder} (FrameworkProfile.HostFolder/HostExecutable).
+$renderHosts = "renderhosts\avalonia12\XDesigner.RenderHost.Avalonia12.exe", "renderhosts\avalonia11\XDesigner.RenderHost.Avalonia11.exe"
+foreach ($required in @("xDesigner.exe", "xDesigner.pri", "LICENSE.txt", "THIRD-PARTY-NOTICES.txt") + $renderHosts) {
     if (-not (Test-Path (Join-Path $publishDir $required))) { throw "The publish output has no $required." }
 }
 
-$hostVersion = & (Join-Path $publishDir "renderhost\XDesigner.RenderHost.exe") --version
-if ($LASTEXITCODE -ne 0) { throw "The published render host doesn't start." }
-Write-Host "Render host: $hostVersion"
+foreach ($renderHost in $renderHosts) {
+    $hostVersion = & (Join-Path $publishDir $renderHost) --version
+    if ($LASTEXITCODE -ne 0) { throw "The published render host $renderHost doesn't start." }
+    Write-Host "Render host: $hostVersion"
+}
 if (Get-ChildItem $publishDir -Recurse -Filter *.pdb) { throw "Debug symbols ended up in the publish output." }
 
 Step "Installer"
