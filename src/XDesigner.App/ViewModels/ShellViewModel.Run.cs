@@ -32,11 +32,27 @@ public sealed partial class ShellViewModel
             return;
         }
 
-        if (IsBuilding)
+        // Set before the first await, so pressing Run (or Restart) twice can't start two builds and two copies of the app.
+        if (IsBuilding || _buildBusy || _runBusy)
         {
             return;
         }
 
+        _runBusy = true;
+        try
+        {
+            await RunCoreAsync(project);
+        }
+        finally
+        {
+            _runBusy = false;
+        }
+    }
+
+    private bool _runBusy;
+
+    private async Task RunCoreAsync(ProjectInfo project)
+    {
         if (!await BuildAsync())
         {
             return; // the build notification already says why

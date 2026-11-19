@@ -57,7 +57,9 @@ public sealed class UndoManager(XamlDocument document, TimeProvider? clock = nul
             _undo.AddLast(command);
             if (_undo.Count > MaxDepth)
             {
-                if (ReferenceEquals(_undo.First!.Value, _savedTop))
+                // The saved state was the first command, or the state before any command (null): either way it can
+                // no longer be reached by undoing.
+                if (_savedTop is null || ReferenceEquals(_undo.First!.Value, _savedTop))
                 {
                     _savedTop = Unsaved;
                 }

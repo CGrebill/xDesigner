@@ -1,3 +1,4 @@
+using XDesigner.App.Services;
 using XDesigner.Core.Editing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -178,7 +179,7 @@ public static class CollectionEditor
         };
         dialog.Resources["ContentDialogMaxWidth"] = 720d; // the default 548 clips the right-hand column
         Refresh(drafts.FirstOrDefault());
-        return await dialog.ShowAsync() == ContentDialogResult.Primary ? drafts : null;
+        return await dialog.ShowOnceAsync() == ContentDialogResult.Primary ? drafts : null;
     }
 
     private static ItemDraft Clone(ItemDraft d)

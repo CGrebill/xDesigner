@@ -160,15 +160,37 @@ public sealed partial class ShellViewModel
     /// </param>
     public async Task<bool> BuildAsync(bool saveDocuments = true)
     {
-        if (Project is not { } project || IsBuilding)
+        // Taken before the first await: a second Build (or Run) pressed while the running app is being stopped must not
+        // start a second build of the same project.
+        if (Project is not { } project || IsBuilding || _buildBusy)
         {
             return false;
         }
 
+        _buildBusy = true;
+        try
+        {
+            return await BuildCoreAsync(project, saveDocuments);
+        }
+        finally
+        {
+            _buildBusy = false;
+        }
+    }
+
+    private bool _buildBusy;
+
+    private async Task<bool> BuildCoreAsync(ProjectInfo project, bool saveDocuments)
+    {
         await StopRunForBuildAsync();
 
         foreach (var doc in Documents.Where(d => saveDocuments && d.IsDirty && project.Contains(d.FilePath)).ToList())
         {
+            if (!CanSaveOverDisk(doc))
+            {
+                return false; // the user decides between their version and the one on disk first
+            }
+
             try
             {
                 doc.Save();
@@ -421,11 +443,31 @@ public sealed partial class ShellViewModel
             return;
         }
 
+        ShowDiskConflict(document, text);
+    }
+
+    private void ShowDiskConflict(DocumentViewModel document, string text) =>
         RaiseNotify(NotifyKind.Warning, $"{document.Title} was changed outside the designer, and you have unsaved changes here.",
         [
             new NotifyAction("Reload (discard my changes)", () => _ = ReloadAsync(document)),
             new NotifyAction("Keep mine", () => document.DiskText = text),
         ], sticky: true);
+
+    /// <summary>
+    /// Whether <paramref name="document"/> may be written: not when another program changed the file since it was loaded
+    /// or saved and nobody chose yet (the notification asking may have been replaced by another one since). Then the
+    /// question is shown again and the file is left alone.
+    /// </summary>
+    public bool CanSaveOverDisk(DocumentViewModel document)
+    {
+        if (document.TextChangedOnDisk() is not { } text)
+        {
+            return true;
+        }
+
+        AppendLog($"Didn't save {document.Title}: it was changed outside the designer. Choose Reload or Keep mine first.");
+        ShowDiskConflict(document, text);
+        return false;
     }
 
     /// <summary>Replaces a document with a fresh load of its file in the same tab, keeping zoom, theme and (where possible) the selection.</summary>
@@ -451,6 +493,13 @@ public sealed partial class ShellViewModel
         var selectedBefore = old.Selection.Selected.Select(id => old.Xaml.FindById(id)).OfType<ElementNode>().ToList();
         var oldNodes = old.Xaml.AllNodes.ToList();
         var newNodes = xaml.AllNodes.ToList();
+
+        // Tabs may have been closed or moved while the file loaded: find this one again.
+        index = Documents.IndexOf(old);
+        if (index < 0)
+        {
+            return;
+        }
 
         var document = new DocumentViewModel(old.FilePath, xaml, old.Project, _hosts) { Zoom = old.Zoom, Theme = old.Theme, PreviewSize = old.PreviewSize };
         document.ShowPreviousFrame(old.Frame);

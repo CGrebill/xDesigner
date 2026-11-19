@@ -24,6 +24,11 @@ public static class SelectionNavigator
 
         var siblings = parent.Children;
         var index = siblings.ToList().FindIndex(s => s.Id == id);
+        if (index < 0)
+        {
+            return id; // content of a property the outline doesn't list (a header, a flyout): no siblings to cycle
+        }
+
         var next = (index + (forward ? 1 : -1) + siblings.Count) % siblings.Count;
         return siblings[next].Id;
     }

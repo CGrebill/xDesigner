@@ -20,13 +20,13 @@ public sealed partial class PropertiesPane
 
     private EventEditorContext EventContext => _eventContext ??= new EventEditorContext
     {
-        Connect = (ids, evt, name) => Document?.ConnectHandler(Live(ids), evt, name),
-        Disconnect = (ids, name) => Document?.DisconnectHandler(Live(ids), name),
+        Connect = (ids, evt, name) => EditTarget?.ConnectHandler(Live(ids), evt, name),
+        Disconnect = (ids, name) => EditTarget?.DisconnectHandler(Live(ids), name),
         CompatibleMethods = evt => Document?.CompatibleMethods(evt) ?? [],
     };
 
     private IReadOnlyList<int> Live(IReadOnlyList<int> ids) =>
-        Document is { } doc ? ids.Where(id => doc.Xaml.FindById(id) is not null).ToList() : [];
+        EditTarget is { } doc ? ids.Where(id => doc.Xaml.FindById(id) is not null).ToList() : [];
 
     private void FlushEventEdits()
     {

@@ -6,6 +6,18 @@ namespace XDesigner.Core.Tests;
 
 public class RenderCopyBuilderTests
 {
+    [Fact]
+    public void RenderCopy_KeepsTheRootOnItsOriginalLine()
+    {
+        const string source = "<?xml version=\"1.0\"?>\r\n<!-- license -->\r\n<UserControl xmlns=\"https://github.com/avaloniaui\">\r\n  <Button />\r\n</UserControl>\r\n";
+
+        var copy = XamlDocument.Parse(source).BuildRenderCopy();
+
+        var lines = copy.Split('\n');
+        Assert.StartsWith("<UserControl", lines[2]);
+        Assert.Contains("<Button", lines[3]);
+    }
+
     private const string Xaml = """
         <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="App.MainWindow">
           <Grid>

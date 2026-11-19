@@ -83,8 +83,8 @@ public static class XamlValueSerializer
                 return false;
 
             case ValueKind.Int:
-                if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i)
-                    || long.TryParse(text, NumberStyles.Integer, CultureInfo.CurrentCulture, out i))
+                if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i)
+                    || int.TryParse(text, NumberStyles.Integer, CultureInfo.CurrentCulture, out i))
                 {
                     normalized = i.ToString(CultureInfo.InvariantCulture);
                     return true;
@@ -168,19 +168,19 @@ public static class XamlValueSerializer
                     return true;
                 }
 
-                if (text.EndsWith('*') && TryParseDouble(text[..^1], out var star))
+                if (text.EndsWith('*') && TryParseDouble(text[..^1], out var star) && star > 0)
                 {
                     normalized = XamlValueText.Double(star) + "*";
                     return true;
                 }
 
-                if (TryParseDouble(text, out var px))
+                if (TryParseDouble(text, out var px) && px >= 0)
                 {
                     normalized = XamlValueText.Double(px);
                     return true;
                 }
 
-                problem = "Enter Auto, *, 2* or a number.";
+                problem = "Enter Auto, *, 2* or a number that isn't negative.";
                 return false;
 
             case ValueKind.FontFamily:
@@ -206,7 +206,8 @@ public static class XamlValueSerializer
         values = new double[parts.Length];
         for (var i = 0; i < parts.Length; i++)
         {
-            if (!double.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out values[i]))
+            if (!double.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out values[i])
+                || double.IsNaN(values[i]) || double.IsInfinity(values[i]))
             {
                 return false;
             }

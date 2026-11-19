@@ -41,7 +41,7 @@ public sealed partial class MainWindow : IDesignCommandHost
         var columns = GridDefinitions.Read(grid.Element, rows: false);
         if (rows is null || columns is null)
         {
-            ShowNotification(NotifyKind.Warning, $"{grid.DisplayName}'s rows or columns are written in a form the designer can't edit (a binding or resource).");
+            ShowNotification(NotifyKind.Warning, $"{grid.DisplayName}'s rows or columns are written in a form the designer can't edit (a binding, a resource, a comment, or settings such as SharedSizeGroup).");
             return;
         }
 

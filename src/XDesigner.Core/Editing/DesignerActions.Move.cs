@@ -59,27 +59,32 @@ public sealed partial class DesignerActions
         var commands = new List<IUndoableCommand>();
         if (oldParent.Id == target.Id)
         {
-            if (plan.Indicator.Kind == DropIndicatorKind.InsertionLine)
+            var siblings = ObjectChildren(node.Element.Parent!);
+            var oldIndex = siblings.IndexOf(node.Element);
+            int? newIndex = plan.Indicator.Kind switch
             {
-                var siblings = ObjectChildren(node.Element.Parent!);
-                var oldIndex = siblings.IndexOf(node.Element);
-                var newIndex = plan.Index > oldIndex ? plan.Index - 1 : plan.Index;
-                if (newIndex == oldIndex)
-                {
-                    return false;
-                }
-
-                commands.Add(new RemoveElementCommand(id));
-                commands.Add(new InsertElementCommand(target.Id, node.Element, newIndex, $"Move {node.DisplayName}"));
+                DropIndicatorKind.InsertionLine => plan.Index > oldIndex ? plan.Index - 1 : plan.Index,
+                DropIndicatorKind.DockArea => DockIndex(target.Element, siblings.Count - 1, plan),
+                _ => null,
+            };
+            if (plan.Indicator.Kind == DropIndicatorKind.InsertionLine && newIndex == oldIndex)
+            {
+                return false;
             }
 
-            commands.AddRange(PlacementCommands(node, plan, targetKind, reparent: false, layout.Find(id)?.Bounds));
+            if (newIndex is { } index && index != oldIndex)
+            {
+                commands.Add(new RemoveElementCommand(id));
+                commands.Add(new InsertElementCommand(target.Id, node.Element, index, $"Move {node.DisplayName}"));
+            }
+
+            commands.AddRange(PlacementCommands(node, plan, targetKind, reparent: false, layout.Find(id)?.Bounds, layout.Find(id)?.Margin));
         }
         else
         {
             commands.Add(new RemoveElementCommand(id));
             commands.Add(new InsertElementCommand(target.Id, node.Element, plan.Index, $"Move {node.DisplayName}"));
-            commands.AddRange(PlacementCommands(node, plan, targetKind, reparent: true, layout.Find(id)?.Bounds));
+            commands.AddRange(PlacementCommands(node, plan, targetKind, reparent: true, layout.Find(id)?.Bounds, layout.Find(id)?.Margin));
         }
 
         return Execute($"Move {node.DisplayName}", commands);
@@ -109,14 +114,17 @@ public sealed partial class DesignerActions
         }
 
         var commands = new List<IUndoableCommand>();
+        var sized = new HashSet<string>(StringComparer.Ordinal);
         if ((edges & (ResizeEdges.Left | ResizeEdges.Right)) != 0)
         {
             commands.AddRange(SetIfChanged(node, "Width", Number(Math.Max(1, bounds.Width))));
+            sized.Add("Width");
         }
 
         if ((edges & (ResizeEdges.Top | ResizeEdges.Bottom)) != 0)
         {
             commands.AddRange(SetIfChanged(node, "Height", Number(Math.Max(1, bounds.Height))));
+            sized.Add("Height");
         }
 
         var kind = layout.Find(parent.Id)?.Panel?.Kind;
@@ -124,7 +132,9 @@ public sealed partial class DesignerActions
         if (IsPositional(kind) && (movesOrigin || kind != PanelKind.Canvas)
             && DropPlanner.PlanInto(_document, catalog, layout, parent.Id, bounds.X, bounds.Y, new HashSet<int> { id }) is { } plan)
         {
-            commands.AddRange(PlacementCommands(node, plan, kind, reparent: false, currentBounds: null));
+            // Pin the size of the axis not being dragged too: a stretched control that becomes top-left aligned
+            // would otherwise collapse to its content size on that axis.
+            commands.AddRange(PlacementCommands(node, plan, kind, reparent: false, bounds, layout.Find(id)?.Margin, sized));
         }
 
         return Execute($"Resize {node.DisplayName}", commands);
@@ -138,22 +148,11 @@ public sealed partial class DesignerActions
     {
         var commands = MoveByCommands(ids, dx, dy, layout, catalog, out _);
         var forward = dx > 0 || dy > 0;
-        foreach (var id in ids)
+        var ordered = ids.Select(_document.FindById).OfType<ElementNode>()
+            .Where(n => n.Parent is { } p && layout.Find(p.Id)?.Panel?.Kind is PanelKind.StackPanel or PanelKind.WrapPanel or PanelKind.UniformGrid);
+        foreach (var group in ordered.GroupBy(n => n.Parent!.Id))
         {
-            if (_document.FindById(id) is not { Parent: { } parent } node
-                || layout.Find(parent.Id)?.Panel?.Kind is not (PanelKind.StackPanel or PanelKind.WrapPanel or PanelKind.UniformGrid))
-            {
-                continue;
-            }
-
-            var siblings = ObjectChildren(node.Element.Parent!);
-            var oldIndex = siblings.IndexOf(node.Element);
-            var newIndex = oldIndex + (forward ? 1 : -1);
-            if (newIndex >= 0 && newIndex < siblings.Count)
-            {
-                commands.Add(new RemoveElementCommand(id));
-                commands.Add(new InsertElementCommand(parent.Id, node.Element, newIndex, "Move"));
-            }
+            commands.AddRange(ReorderCommands(group.Key, group.Select(n => n.Element).ToHashSet(), forward));
         }
 
         var first = _document.FindById(ids.FirstOrDefault())?.DisplayName;
@@ -194,7 +193,7 @@ public sealed partial class DesignerActions
             var plan = DropPlanner.PlanInto(_document, catalog, layout, parent.Id, element.Bounds.X + dx, element.Bounds.Y + dy, new HashSet<int> { id });
             if (plan is not null)
             {
-                commands.AddRange(PlacementCommands(node, plan, layout.Find(parent.Id)?.Panel?.Kind, reparent: false, element.Bounds));
+                commands.AddRange(PlacementCommands(node, plan, layout.Find(parent.Id)?.Panel?.Kind, reparent: false, element.Bounds, element.Margin));
                 moved++;
             }
         }
@@ -203,12 +202,70 @@ public sealed partial class DesignerActions
     }
 
     /// <summary>
+    /// Moves the <paramref name="selected"/> children of a stack one place forward or back. Selected neighbours move
+    /// together as a block, and a block at the end stays where it is.
+    /// </summary>
+    private List<IUndoableCommand> ReorderCommands(int parentId, HashSet<XElement> selected, bool forward)
+    {
+        var parent = _document.FindById(parentId)!.Element;
+        var order = ObjectChildren(parent);
+        if (forward)
+        {
+            for (var i = order.Count - 2; i >= 0; i--)
+            {
+                if (selected.Contains(order[i]) && !selected.Contains(order[i + 1]))
+                {
+                    (order[i], order[i + 1]) = (order[i + 1], order[i]);
+                }
+            }
+        }
+        else
+        {
+            for (var i = 1; i < order.Count; i++)
+            {
+                if (selected.Contains(order[i]) && !selected.Contains(order[i - 1]))
+                {
+                    (order[i], order[i - 1]) = (order[i - 1], order[i]);
+                }
+            }
+        }
+
+        // Replay the new order as remove/insert pairs, simulating each step so the indices are right when undone too.
+        var commands = new List<IUndoableCommand>();
+        var current = ObjectChildren(parent);
+        for (var k = 0; k < order.Count; k++)
+        {
+            if (current[k] != order[k])
+            {
+                current.Remove(order[k]);
+                current.Insert(k, order[k]);
+                commands.Add(new RemoveElementCommand(_document.NodeFor(order[k]).Id));
+                commands.Add(new InsertElementCommand(parentId, order[k], k, "Move"));
+            }
+        }
+
+        return commands;
+    }
+
+    /// <summary>Where a child moved within its own DockPanel goes: before the filling last child when docked, else last.</summary>
+    private static int DockIndex(XElement dockPanel, int remaining, DropPlan plan)
+    {
+        var lastChildFills = !string.Equals((string?)dockPanel.Attribute("LastChildFill"), "False", StringComparison.OrdinalIgnoreCase);
+        var docks = plan.Attributes.Any(a => a.Key == "DockPanel.Dock");
+        return docks && lastChildFills && remaining > 0 ? remaining - 1 : remaining;
+    }
+
+    /// <summary>
     /// Attribute changes that make <paramref name="node"/>'s layout match <paramref name="plan"/>: clears attached
     /// properties of the panel it left (or that the new placement decides), drops designer positioning
     /// (Left/Top alignment + margin) when the new container doesn't position, sets the plan's attributes, and pins
     /// the current size when a stretching element becomes positioned so it doesn't shrink.
     /// </summary>
-    private static List<IUndoableCommand> PlacementCommands(ElementNode node, DropPlan plan, PanelKind? targetKind, bool reparent, RectDto? currentBounds)
+    /// <param name="currentMargin">The element's laid-out margin: on a Canvas, its bounds include it, so the position doesn't.</param>
+    /// <param name="alreadySized">Size attributes the caller sets itself (a resize), not to be pinned again.</param>
+    private static List<IUndoableCommand> PlacementCommands(
+        ElementNode node, DropPlan plan, PanelKind? targetKind, bool reparent, RectDto? currentBounds, ThicknessDto? currentMargin = null,
+        IReadOnlySet<string>? alreadySized = null)
     {
         var element = node.Element;
         var planned = plan.Attributes.ToDictionary(a => a.Key, a => a.Value);
@@ -233,15 +290,23 @@ public sealed partial class DesignerActions
             commands.Add(new SetAttributeCommand(node.Id, "VerticalAlignment", null));
             commands.Add(new SetAttributeCommand(node.Id, "Margin", null));
         }
+        else if (targetKind == PanelKind.Canvas && currentMargin is { } m)
+        {
+            // The margin stays, and Canvas.Left/Top position the margin box: subtract it so the control doesn't jump.
+            Subtract(planned, "Canvas.Left", m.Left);
+            Subtract(planned, "Canvas.Top", m.Top);
+        }
 
         if (planned.ContainsKey("Margin") && currentBounds is { } b)
         {
-            if (element.Attribute("Width") is null && (string?)element.Attribute("HorizontalAlignment") is null or "Stretch")
+            if (alreadySized?.Contains("Width") != true && element.Attribute("Width") is null
+                && (string?)element.Attribute("HorizontalAlignment") is null or "Stretch")
             {
                 commands.Add(new SetAttributeCommand(node.Id, "Width", Number(b.Width)));
             }
 
-            if (element.Attribute("Height") is null && (string?)element.Attribute("VerticalAlignment") is null or "Stretch")
+            if (alreadySized?.Contains("Height") != true && element.Attribute("Height") is null
+                && (string?)element.Attribute("VerticalAlignment") is null or "Stretch")
             {
                 commands.Add(new SetAttributeCommand(node.Id, "Height", Number(b.Height)));
             }
@@ -253,6 +318,15 @@ public sealed partial class DesignerActions
         }
 
         return commands;
+    }
+
+    private static void Subtract(Dictionary<XName, string> planned, string attribute, double amount)
+    {
+        if (amount != 0 && planned.TryGetValue(attribute, out var text)
+            && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            planned[attribute] = Math.Max(0, Math.Round(value - amount)).ToString(CultureInfo.InvariantCulture);
+        }
     }
 
     private static IEnumerable<IUndoableCommand> SetIfChanged(ElementNode node, XName attribute, string value) =>

@@ -93,8 +93,10 @@ orientation). `ProtocolInfo.Version` is bumped whenever a DTO or the interface c
 ### 5.1 `XamlDocument`
 Wraps an `XDocument` loaded with whitespace and line info. `Load` remembers encoding, BOM and line endings; `Save`
 writes them back atomically (temporary file, then replace). Serialization is custom (`XamlTextWriter`): every start
-tag's original text is captured at parse time (`OriginalStartTag`); unedited tags, the prolog and comments are copied
-verbatim, and an edited tag is rebuilt reusing the original text of its unchanged attributes. Every *object element*
+tag's original text is captured at parse time (`OriginalStartTag`), and so is the source text of every text, comment,
+CDATA and processing-instruction node (`OriginalText`, which keeps entities, unescaped `>` and line endings). Unedited
+tags and nodes and the prolog are copied verbatim, and an edited tag is rebuilt reusing the original text of its
+unchanged attributes. Every *object element*
 (not property elements such as `<Grid.RowDefinitions>`) gets an `ElementNode` with an id that is stable for the session
 (an annotation on the `XElement`, so it survives moves and undo) and equals the design id in render results. The
 document raises `Changed` with the affected ids and whether the structure changed.

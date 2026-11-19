@@ -43,6 +43,13 @@ public class XamlValueSerializerTests
     [InlineData(ValueKind.Brush, "#12345")]
     [InlineData(ValueKind.Double, "12px")]
     [InlineData(ValueKind.Int, "1.5")]
+    [InlineData(ValueKind.Int, "3000000000")]
+    [InlineData(ValueKind.Thickness, "NaN")]
+    [InlineData(ValueKind.Thickness, "1,Infinity,1,1")]
+    [InlineData(ValueKind.CornerRadius, "1e400")]
+    [InlineData(ValueKind.GridLength, "-5")]
+    [InlineData(ValueKind.GridLength, "-1*")]
+    [InlineData(ValueKind.GridLength, "0*")]
     [InlineData(ValueKind.Unsupported, "x")]
     public void Rejects(ValueKind kind, string input)
     {

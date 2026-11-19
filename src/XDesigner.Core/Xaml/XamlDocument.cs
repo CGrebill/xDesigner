@@ -79,6 +79,11 @@ public sealed class XamlDocument
 
         var rootStart = StartOffset(root, lineStarts);
         var prolog = root.Annotation<OriginalStartTag>() is not null && rootStart >= 0 ? text[..rootStart] : null;
+        if (prolog is not null)
+        {
+            OriginalText.Annotate(text, root, rootStart);
+        }
+
         var lastClose = text.LastIndexOf('>');
         var epilog = lastClose >= 0 && string.IsNullOrWhiteSpace(text[(lastClose + 1)..]) ? text[(lastClose + 1)..] : "";
 

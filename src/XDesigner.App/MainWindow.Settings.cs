@@ -170,7 +170,7 @@ public sealed partial class MainWindow
         };
         dialog.Resources["ContentDialogMaxWidth"] = 640d;
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        if (await dialog.ShowOnceAsync() != ContentDialogResult.Primary)
         {
             return;
         }

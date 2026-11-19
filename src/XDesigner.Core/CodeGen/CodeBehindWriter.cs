@@ -34,11 +34,14 @@ public static class CodeBehindWriter
     /// Makes sure <paramref name="classFullName"/> has a method <paramref name="methodName"/> that can handle an event with
     /// <paramref name="signature"/>. Reuses a compatible existing method; if the name is taken by something incompatible,
     /// uses <c>name_1</c>, <c>name_2</c>… instead. Writes the file only when something was added.
+    /// Other files in the same folder that declare the same partial class count too: a compatible method there is reused,
+    /// and their member names are taken, as are <paramref name="fieldNames"/> (the XAML's <c>x:Name</c>s, which become fields).
     /// </summary>
-    public static HandlerResult EnsureHandler(string path, string classFullName, string methodName, HandlerSignature signature)
+    public static HandlerResult EnsureHandler(
+        string path, string classFullName, string methodName, HandlerSignature signature, IReadOnlySet<string>? fieldNames = null)
     {
         var (text, encoding) = Read(path);
-        var (updated, result) = EnsureHandlerInText(text, path, classFullName, methodName, signature);
+        var (updated, result) = EnsureHandlerInText(text, path, classFullName, methodName, signature, OtherParts(path, classFullName), fieldNames);
         if (result.Created)
         {
             WriteAtomically(path, updated, encoding);
@@ -93,13 +96,26 @@ public static class CodeBehindWriter
         WriteAtomically(path, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
     }
 
-    internal static (string Text, HandlerResult Result) EnsureHandlerInText(string text, string path, string classFullName, string methodName, HandlerSignature signature)
+    /// <summary>Another file declaring part of the same partial class.</summary>
+    internal sealed record ClassPart(string Path, string Text, ClassDeclarationSyntax Class);
+
+    internal static (string Text, HandlerResult Result) EnsureHandlerInText(
+        string text, string path, string classFullName, string methodName, HandlerSignature signature,
+        IReadOnlyList<ClassPart>? otherParts = null, IReadOnlySet<string>? fieldNames = null)
     {
         var root = CSharpSyntaxTree.ParseText(text).GetCompilationUnitRoot();
+        if (root.GetDiagnostics().FirstOrDefault(d => d.Severity == DiagnosticSeverity.Error) is { } error)
+        {
+            // Roslyn's error recovery can put the class's closing brace anywhere: don't splice a method into a guess.
+            var line = error.Location.GetLineSpan().StartLinePosition.Line + 1;
+            throw new CodeBehindException($"{Path.GetFileName(path)} has a syntax error on line {line} ({error.GetMessage(System.Globalization.CultureInfo.InvariantCulture)}). Fix it, then try again.");
+        }
+
         var cls = FindClass(root, classFullName)
             ?? throw new CodeBehindException($"{Path.GetFileName(path)} has no class {classFullName} (the x:Class of the XAML file).");
+        var parts = otherParts ?? [];
 
-        // Reuse a compatible method with the name; otherwise find a free name.
+        // Reuse a compatible method with the name (in any part of the class); otherwise find a free name.
         var name = methodName;
         for (var n = 1; ; n++)
         {
@@ -109,7 +125,16 @@ public static class CodeBehindWriter
                 return (text, new HandlerResult(path, classFullName, name, LineOf(existing.Identifier.SpanStart, text), false));
             }
 
-            if (taken.Count == 0)
+            foreach (var part in parts)
+            {
+                if (part.Class.Members.OfType<MethodDeclarationSyntax>().FirstOrDefault(m => m.Identifier.Text == name && IsCompatible(m, signature)) is { } elsewhere)
+                {
+                    return (text, new HandlerResult(part.Path, classFullName, name, LineOf(elsewhere.Identifier.SpanStart, part.Text), false));
+                }
+            }
+
+            var takenElsewhere = fieldNames?.Contains(name) == true || parts.Any(p => p.Class.Members.Any(m => MemberName(m) == name));
+            if (taken.Count == 0 && !takenElsewhere)
             {
                 break;
             }
@@ -156,6 +181,46 @@ public static class CodeBehindWriter
         var insertAt = closeOnOwnLine ? lineStart : close;
         var updated = text.Insert(insertAt, method.ToString());
         return (updated, new HandlerResult(path, classFullName, name, LineOf(insertAt + signatureStart, updated), true));
+    }
+
+    /// <summary>The other <c>.cs</c> files next to <paramref name="path"/> that declare part of the partial class.</summary>
+    private static List<ClassPart> OtherParts(string path, string classFullName)
+    {
+        var parts = new List<ClassPart>();
+        var simpleName = classFullName[(classFullName.LastIndexOf('.') + 1)..];
+        IEnumerable<string> files;
+        try
+        {
+            files = Directory.EnumerateFiles(Path.GetDirectoryName(Path.GetFullPath(path))!, "*.cs").ToList();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return parts;
+        }
+
+        foreach (var file in files.Where(f => !string.Equals(Path.GetFullPath(f), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase)))
+        {
+            try
+            {
+                var (text, _) = Read(file);
+                if (!text.Contains("partial", StringComparison.Ordinal) || !text.Contains(simpleName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (FindClass(CSharpSyntaxTree.ParseText(text).GetCompilationUnitRoot(), classFullName) is { } cls
+                    && cls.Modifiers.Any(SyntaxKind.PartialKeyword))
+                {
+                    parts.Add(new ClassPart(file, text, cls));
+                }
+            }
+            catch (CodeBehindException)
+            {
+                // Unreadable: it can't be checked, and it isn't written.
+            }
+        }
+
+        return parts;
     }
 
     private static ClassDeclarationSyntax? FindClass(CompilationUnitSyntax root, string fullName) =>
@@ -335,10 +400,19 @@ public static class CodeBehindWriter
             [0xEF, 0xBB, 0xBF, ..] => new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
             [0xFF, 0xFE, ..] => new UnicodeEncoding(bigEndian: false, byteOrderMark: true),
             [0xFE, 0xFF, ..] => new UnicodeEncoding(bigEndian: true, byteOrderMark: true),
-            _ => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            _ => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true),
         };
         var preamble = encoding.GetPreamble().Length;
-        return (encoding.GetString(bytes, preamble, bytes.Length - preamble), encoding);
+        try
+        {
+            return (encoding.GetString(bytes, preamble, bytes.Length - preamble), encoding);
+        }
+        catch (DecoderFallbackException ex)
+        {
+            // Probably a legacy code page (Windows-1252): decoding it as UTF-8 and writing it back would destroy every
+            // non-ASCII character in it.
+            throw new CodeBehindException($"{Path.GetFileName(path)} isn't saved as UTF-8, so the designer won't change it. Save it as UTF-8 in your editor, then try again.", ex);
+        }
     }
 
     private static void WriteAtomically(string path, string text, Encoding encoding)

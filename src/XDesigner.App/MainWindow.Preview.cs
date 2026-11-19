@@ -1,3 +1,4 @@
+using XDesigner.App.Services;
 using System.Globalization;
 using XDesigner.App.ViewModels;
 using XDesigner.Protocol.Rendering;
@@ -129,7 +130,7 @@ public sealed partial class MainWindow
             },
         };
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary || double.IsNaN(width.Value) || double.IsNaN(height.Value))
+        if (await dialog.ShowOnceAsync() != ContentDialogResult.Primary || double.IsNaN(width.Value) || double.IsNaN(height.Value))
         {
             return null;
         }

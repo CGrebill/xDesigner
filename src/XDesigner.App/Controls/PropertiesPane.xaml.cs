@@ -76,11 +76,29 @@ public sealed partial class PropertiesPane : UserControl
         }
     }
 
+    /// <summary>
+    /// The document edits are committed to: normally <see cref="Document"/>, but while the pane flushes the edits
+    /// typed for the previous document, that one (when this pane's callback runs, <see cref="Document"/> is already
+    /// the new document, whose element ids would match unrelated elements).
+    /// </summary>
+    private DocumentViewModel? EditTarget => _flushTarget ?? Document;
+
+    private DocumentViewModel? _flushTarget;
+
     private void OnDocumentChanged(DocumentViewModel? oldDocument, DocumentViewModel? newDocument)
     {
         if (oldDocument is not null)
         {
-            FlushPendingEdits();
+            _flushTarget = oldDocument;
+            try
+            {
+                FlushPendingEdits();
+            }
+            finally
+            {
+                _flushTarget = null;
+            }
+
             oldDocument.Selection.Changed -= OnSelectionChanged;
             oldDocument.Xaml.Changed -= OnXamlChanged;
             oldDocument.PropertyChanged -= OnDocumentPropertyChanged;
@@ -347,7 +365,7 @@ public sealed partial class PropertiesPane : UserControl
 
     private string? Commit(IReadOnlyList<int> targets, string key, string? value)
     {
-        if (Document is not { } doc)
+        if (EditTarget is not { } doc)
         {
             return null;
         }
@@ -471,7 +489,7 @@ public sealed partial class PropertiesPane : UserControl
 
     private void CommitName(bool revertIfInvalid = false)
     {
-        if (!NameDirty || Document is not { } doc || _nameTarget is not { } id)
+        if (!NameDirty || EditTarget is not { } doc || _nameTarget is not { } id)
         {
             return;
         }

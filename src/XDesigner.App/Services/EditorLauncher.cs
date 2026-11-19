@@ -18,7 +18,7 @@ public static class EditorLauncher
             switch (settings.Editor)
             {
                 case EditorChoice.VisualStudioCode:
-                    return FindVsCode() is { } code ? Start(code, ["-g", $"{path}:{line}"]) : "VS Code isn't installed (code.cmd wasn't found). Choose another editor in Settings.";
+                    return FindVsCode() is { } code ? StartVsCode(code, path, line) : "VS Code isn't installed (code.cmd wasn't found). Choose another editor in Settings.";
                 case EditorChoice.VisualStudio:
                     return FindVisualStudio() is { } devenv ? Start(devenv, ["/edit", path]) : "Visual Studio wasn't found. Choose another editor in Settings.";
                 case EditorChoice.SystemDefault:
@@ -26,7 +26,7 @@ public static class EditorLauncher
                 case EditorChoice.Custom:
                     return OpenCustom(settings.CustomEditorCommand, path, line);
                 default:
-                    return FindVsCode() is { } auto ? Start(auto, ["-g", $"{path}:{line}"]) : OpenWithShell(path);
+                    return FindVsCode() is { } auto ? StartVsCode(auto, path, line) : OpenWithShell(path);
             }
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
@@ -69,11 +69,29 @@ public static class EditorLauncher
             rest += " {file}";
         }
 
-        // The path is always passed quoted (it may contain spaces), whether or not the command quoted {file} itself.
-        var quoted = $"\"{path}\"";
-        var arguments = rest.Replace("\"{file}\"", quoted, StringComparison.Ordinal).Replace("{file}", quoted, StringComparison.Ordinal)
-            .Replace("{line}", line.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
-        return (program, arguments.Trim());
+        // The path may contain spaces: {file} inside quotes the command wrote ("{file}", "{file}:{line}") gets the bare
+        // path; a bare {file} gets quotes of its own.
+        var arguments = new System.Text.StringBuilder();
+        var inQuotes = false;
+        for (var i = 0; i < rest.Length; i++)
+        {
+            if (string.CompareOrdinal(rest, i, "{file}", 0, 6) == 0)
+            {
+                arguments.Append(inQuotes ? path : $"\"{path}\"");
+                i += 5;
+                continue;
+            }
+
+            if (rest[i] == '"')
+            {
+                inQuotes = !inQuotes;
+            }
+
+            arguments.Append(rest[i]);
+        }
+
+        var filled = arguments.ToString().Replace("{line}", line.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
+        return (program, filled.Trim());
     }
 
     private static string? OpenCustom(string command, string path, int line)
@@ -85,6 +103,33 @@ public static class EditorLauncher
 
         Process.Start(new ProcessStartInfo(parsed.Program, parsed.Arguments) { UseShellExecute = true })?.Dispose();
         return null;
+    }
+
+    /// <summary>
+    /// VS Code at the line. <c>code.cmd</c> is a batch file, so starting it runs <c>cmd.exe</c>, which would treat
+    /// <c>&amp;</c>, <c>|</c> or <c>^</c> in the path as commands (.NET doesn't escape for batch files). So start
+    /// <c>Code.exe</c> next to it directly, and use the batch file only for paths without such characters.
+    /// </summary>
+    private static string? StartVsCode(string codeCmd, string path, int line)
+    {
+        var argument = $"{path}:{line}";
+        if (VsCodeExecutable(codeCmd) is { } exe)
+        {
+            return Start(exe, ["-g", argument]);
+        }
+
+        return argument.AsSpan().IndexOfAny(CmdSpecialCharacters) < 0 ? Start(codeCmd, ["-g", argument]) : OpenWithShell(path);
+    }
+
+    private static readonly System.Buffers.SearchValues<char> CmdSpecialCharacters = System.Buffers.SearchValues.Create("&|^<>%!\"()");
+
+    /// <summary><c>Code.exe</c> for a <c>…\bin\code.cmd</c> (the layout of every VS Code install).</summary>
+    internal static string? VsCodeExecutable(string codeCmd)
+    {
+        var bin = Path.GetDirectoryName(codeCmd);
+        var install = bin is null ? null : Path.GetDirectoryName(bin);
+        var exe = install is null ? null : Path.Combine(install, "Code.exe");
+        return exe is not null && File.Exists(exe) ? exe : null;
     }
 
     private static string? Start(string program, string[] arguments)

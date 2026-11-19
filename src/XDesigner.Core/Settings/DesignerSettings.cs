@@ -84,7 +84,12 @@ public sealed class SettingsStore(string path)
     {
         try
         {
-            return File.Exists(Path) ? JsonSerializer.Deserialize<DesignerSettings>(File.ReadAllText(Path), Options) ?? new() : new();
+            var settings = File.Exists(Path) ? JsonSerializer.Deserialize<DesignerSettings>(File.ReadAllText(Path), Options) ?? new() : new();
+
+            // Valid JSON can still say "null" where the app expects a value (a hand-edited file): use the defaults there.
+            settings.Recent = settings.Recent?.Where(p => !string.IsNullOrWhiteSpace(p)).ToList() ?? [];
+            settings.CustomEditorCommand ??= "";
+            return settings;
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or NotSupportedException)
         {
@@ -98,9 +103,18 @@ public sealed class SettingsStore(string path)
         try
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
-            var temp = Path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(settings, Options));
-            File.Move(temp, Path, overwrite: true);
+            // A temporary name of its own, so two running designers saving at once don't write the same file.
+            var temp = $"{Path}.{Environment.ProcessId}.tmp";
+            try
+            {
+                File.WriteAllText(temp, JsonSerializer.Serialize(settings, Options));
+                File.Move(temp, Path, overwrite: true);
+            }
+            finally
+            {
+                File.Delete(temp);
+            }
+
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

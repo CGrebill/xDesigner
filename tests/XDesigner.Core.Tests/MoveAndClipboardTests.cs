@@ -330,6 +330,52 @@ public class MoveAndClipboardTests
     }
 
     [Fact]
+    public void Paste_PlainSnippetWithUndeclaredXPrefix()
+    {
+        var (target, actions, panel, layout) = EmptyTarget("""<Window xmlns="https://github.com/avaloniaui"><StackPanel /></Window>""");
+
+        var ids = actions.Paste("<Button x:Name=\"ok\" Content=\"OK\" />", panel, layout, Catalog, out var problem);
+
+        Assert.Null(problem);
+        Assert.Single(ids!);
+        var result = target.ToXaml();
+        Assert.Contains("xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\"", result);
+        Assert.Contains("<Button x:Name=\"ok\" Content=\"OK\" />", result);
+    }
+
+    [Fact]
+    public void Paste_DeclaresPrefixesUsedOnlyInValues()
+    {
+        const string source = """
+            <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:vm="using:App.ViewModels">
+              <StackPanel><ListBox x:DataType="vm:Item" /></StackPanel>
+            </Window>
+            """;
+        var doc = XamlDocument.Parse(source);
+        var copy = new DesignerActions(doc, new UndoManager(doc)).Copy([doc.AllNodes.Single(n => n.TypeName == "ListBox").Id])!;
+
+        var (target, actions, panel, layout) = EmptyTarget("""<Window xmlns="https://github.com/avaloniaui"><StackPanel /></Window>""");
+        actions.Paste(copy, panel, layout, Catalog, out _);
+        Assert.Contains("xmlns:vm=\"using:App.ViewModels\"", target.ToXaml());
+
+        // The target already uses "vm" for something else: the pasted element declares its own.
+        var (other, otherActions, otherPanel, otherLayout) = EmptyTarget("""<Window xmlns="https://github.com/avaloniaui" xmlns:vm="using:Other"><StackPanel /></Window>""");
+        otherActions.Paste(copy, otherPanel, otherLayout, Catalog, out _);
+        var pasted = other.AllNodes.Single(n => n.TypeName == "ListBox").Element;
+        Assert.Equal("using:App.ViewModels", pasted.GetNamespaceOfPrefix("vm")?.NamespaceName);
+        Assert.Equal("using:Other", other.Xml.Root!.GetNamespaceOfPrefix("vm")?.NamespaceName);
+    }
+
+    private static (XamlDocument Doc, DesignerActions Actions, int Panel, LayoutIndex Layout) EmptyTarget(string xaml)
+    {
+        var target = XamlDocument.Parse(xaml);
+        var panel = target.Root.Children.Single();
+        var layout = new LayoutIndex(new ElementLayout(target.Root.Id, "Window", new RectDto(0, 0, 100, 100), true, ThicknessDto.Zero, ThicknessDto.Zero, null,
+            [new ElementLayout(panel.Id, "StackPanel", new RectDto(0, 0, 100, 100), true, ThicknessDto.Zero, ThicknessDto.Zero, new PanelInfo(PanelKind.StackPanel), [])]));
+        return (target, new DesignerActions(target, new UndoManager(target)), panel.Id, layout);
+    }
+
+    [Fact]
     public void Paste_RejectsNonXamlAndRootOnlyCopies()
     {
         var s = Open();

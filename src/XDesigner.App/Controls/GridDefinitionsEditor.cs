@@ -1,3 +1,4 @@
+using XDesigner.App.Services;
 using XDesigner.Core.Editing;
 using XDesigner.Core.Properties;
 using Microsoft.UI.Xaml;
@@ -98,7 +99,7 @@ public static class GridDefinitionsEditor
             },
         };
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        if (await dialog.ShowOnceAsync() != ContentDialogResult.Primary)
         {
             return null;
         }

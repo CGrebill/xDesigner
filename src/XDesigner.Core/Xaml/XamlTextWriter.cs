@@ -5,14 +5,11 @@ namespace XDesigner.Core.Xaml;
 
 /// <summary>
 /// Serializes a <see cref="XamlDocument"/> back to text, reusing the original source text wherever the
-/// document wasn't changed: the prolog, every unedited start tag verbatim, and for edited start tags the
-/// original text of each unchanged attribute (§5.1, §5.5). <see cref="XDocument.ToString()"/> would
-/// instead collapse multi-line attribute lists and change quote styles.
+/// document wasn't changed: the prolog, every unedited start tag, text, comment and CDATA node verbatim
+/// (<see cref="OriginalText"/>), and for edited start tags the original text of each unchanged attribute
+/// (§5.1, §5.5). <see cref="XDocument.ToString()"/> would instead collapse multi-line attribute lists,
+/// change quote styles and re-escape text.
 /// </summary>
-/// <remarks>
-/// Known, harmless differences after an edit: character references in element text (<c>&amp;#xE737;</c>)
-/// are written as the character itself. Unedited documents round-trip byte for byte.
-/// </remarks>
 internal sealed class XamlTextWriter
 {
     private readonly XamlDocument _document;
@@ -52,12 +49,15 @@ internal sealed class XamlTextWriter
 
         WriteElement(root);
 
-        // After the root: comments/PIs from the model, then the original trailing whitespace (final newline).
-        foreach (var node in root.NodesAfterSelf())
+        // After the root: comments/PIs and the whitespace between them, then the original trailing whitespace (the
+        // final newline, which the epilog holds).
+        var after = root.NodesAfterSelf().ToList();
+        for (var i = 0; i < after.Count; i++)
         {
-            if (node is not XText text || !string.IsNullOrWhiteSpace(text.Value))
+            var isWhitespace = after[i] is XText text && string.IsNullOrWhiteSpace(text.Value);
+            if (!isWhitespace || (i < after.Count - 1 && OriginalText.Of(after[i]) is not null))
             {
-                WriteNode(node);
+                WriteNode(after[i]);
             }
         }
 
@@ -67,6 +67,12 @@ internal sealed class XamlTextWriter
 
     private void WriteNode(XNode node)
     {
+        if (OriginalText.Of(node) is { } original)
+        {
+            _out.Append(original); // unchanged since it was parsed: exactly as written
+            return;
+        }
+
         switch (node)
         {
             case XElement element:
@@ -76,13 +82,14 @@ internal sealed class XamlTextWriter
                 _out.Append("<![CDATA[").Append(NormalizeNewLines(cdata.Value)).Append("]]>");
                 break;
             case XText text:
-                _out.Append(EscapeText(NormalizeNewLines(text.Value)));
+                // Escape first: a carriage return in the value (from &#13;) must stay a reference, not become a line break.
+                _out.Append(NormalizeNewLines(EscapeText(text.Value)));
                 break;
             case XComment comment:
                 _out.Append("<!--").Append(NormalizeNewLines(comment.Value)).Append("-->");
                 break;
             case XProcessingInstruction pi:
-                _out.Append("<?").Append(pi.Target).Append(' ').Append(pi.Data).Append("?>");
+                _out.Append("<?").Append(pi.Target).Append(pi.Data.Length > 0 ? " " : "").Append(pi.Data).Append("?>");
                 break;
         }
     }
@@ -228,7 +235,8 @@ internal sealed class XamlTextWriter
     private static string EscapeText(string value) =>
         value.Replace("&", "&amp;", StringComparison.Ordinal)
             .Replace("<", "&lt;", StringComparison.Ordinal)
-            .Replace(">", "&gt;", StringComparison.Ordinal);
+            .Replace(">", "&gt;", StringComparison.Ordinal)
+            .Replace("\r", "&#xD;", StringComparison.Ordinal);
 
     private static string EscapeAttribute(string value, char quote)
     {

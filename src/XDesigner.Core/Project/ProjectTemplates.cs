@@ -39,8 +39,33 @@ public static class ProjectTemplates
             return "Use only letters, digits, dots, hyphens and underscores (no spaces).";
         }
 
+        // The project's id must not be a package it references (NuGet reports a cycle), and no part of its namespace may
+        // be a type the template uses unqualified (the namespace would hide the type, CS0118).
+        var first = name.Split('.')[0];
+        if (ReservedProjectPrefixes.Any(p => first.Equals(p, StringComparison.OrdinalIgnoreCase)))
+        {
+            return $"A project can't be called {first}: that's the name of a package it uses. Try {first}App.";
+        }
+
+        if (NamespaceFor(name).Split('.').FirstOrDefault(TemplateTypeNames.Contains) is { } clash)
+        {
+            return $"A project can't be called {clash}: that's a type name the new project uses. Try {clash}App or My{clash}.";
+        }
+
         return null;
     }
+
+    /// <summary>The packages new projects reference are all <c>Avalonia</c> or <c>Avalonia.*</c>.</summary>
+    private static readonly string[] ReservedProjectPrefixes = ["Avalonia"];
+
+    /// <summary>
+    /// Types the templates use without a namespace and don't define themselves: a namespace segment with one of these
+    /// names hides the type. (App, MainWindow and Program are defined in the project's namespace, so they still resolve.)
+    /// </summary>
+    private static readonly HashSet<string> TemplateTypeNames = new(StringComparer.Ordinal)
+    {
+        "Application", "Window", "UserControl", "AppBuilder", "AvaloniaXamlLoader", "IClassicDesktopStyleApplicationLifetime", "STAThread",
+    };
 
     /// <summary>A C# namespace for a project name: <c>My-App.Tools</c> → <c>My_App.Tools</c>.</summary>
     public static string NamespaceFor(string name) =>
@@ -66,7 +91,9 @@ public static class ProjectTemplates
         var tokens = new Dictionary<string, string>
         {
             ["$rootnamespace$"] = NamespaceFor(name),
-            ["$title$"] = System.Security.SecurityElement.Escape(string.IsNullOrWhiteSpace(title) ? name : title.Trim()),
+            // An attribute value: a leading '{' would make it a markup extension, so it gets the {} escape.
+            ["$title$"] = System.Security.SecurityElement.Escape(
+                Properties.XamlValueSerializer.ToAttribute(string.IsNullOrWhiteSpace(title) ? name : title.Trim())),
             ["$avaloniaversion$"] = AvaloniaVersion,
         };
 
@@ -92,6 +119,11 @@ public static class ProjectTemplates
         if (!SyntaxFacts.IsValidIdentifier(className) || SyntaxFacts.GetKeywordKind(className) != SyntaxKind.None)
         {
             return "Enter a C# class name (letters, digits and _; starts with a letter).";
+        }
+
+        if (className is "Window" or "UserControl")
+        {
+            return $"A class can't be called {className}: it would derive from itself. Try My{className}.";
         }
 
         return File.Exists(Path.Combine(folder, className + ".axaml")) || File.Exists(Path.Combine(folder, className + ".axaml.cs"))

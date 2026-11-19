@@ -94,4 +94,17 @@ public class SelectionTests
         Assert.Null(SelectionNavigator.Parent(doc, selection));
         Assert.Equal(kids[0], SelectionNavigator.Sibling(doc, selection, forward: true));    // root → first child
     }
+
+    [Fact]
+    public void Navigator_InContentTheOutlineDoesNotList_StaysPut()
+    {
+        var doc = XamlDocument.Parse("""
+            <TabControl xmlns="https://github.com/avaloniaui"><TabItem><TabItem.Header><TextBlock /></TabItem.Header></TabItem></TabControl>
+            """);
+        var header = doc.AllNodes.Single(n => n.TypeName == "TextBlock").Id;
+        var selection = new SelectionService();
+        selection.Select(header);
+
+        Assert.Equal(header, SelectionNavigator.Sibling(doc, selection, forward: true));
+    }
 }

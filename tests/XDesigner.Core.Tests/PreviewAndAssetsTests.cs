@@ -160,11 +160,55 @@ public sealed class PreviewAndAssetsTests : IDisposable
         Assert.Equal(text, File.ReadAllText(path));
     }
 
+    [Theory]
+    [InlineData("<Project Sdk=\"Microsoft.NET.Sdk\">\n  <ItemGroup>\n    <PackageReference Include=\"Avalonia\" />\n  </ItemGroup></Project>\n")]
+    [InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>WinExe</OutputType></PropertyGroup></Project>")]
+    public void EnsureAvaloniaResource_KeepsContentOnTheClosingLine(string original)
+    {
+        var path = Path.Combine(_dir, "App.csproj");
+        File.WriteAllText(path, original);
+
+        Assert.True(ProjectFileEditor.EnsureAvaloniaResource(path));
+
+        var text = File.ReadAllText(path);
+        var before = XDocument.Parse(original).Root!.Elements().Select(e => e.ToString()).ToList();
+        var after = XDocument.Parse(text).Root!.Elements().Select(e => e.ToString()).ToList();
+        Assert.Equal(before, after.Take(before.Count)); // everything that was there is still there
+        Assert.True(ProjectFileEditor.CoversAssets(XDocument.Parse(text)));
+        Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    [Fact]
+    public void EnsureAvaloniaResource_RefusesAFileThatIsNotUtf8()
+    {
+        var path = Path.Combine(_dir, "App.csproj");
+        var original = System.Text.Encoding.Latin1.GetBytes("<Project><!-- Größe --></Project>");
+        File.WriteAllBytes(path, original);
+
+        Assert.Throws<InvalidDataException>(() => ProjectFileEditor.EnsureAvaloniaResource(path));
+        Assert.Equal(original, File.ReadAllBytes(path));
+    }
+
     [Fact]
     public void EnsureAvaloniaResource_RecognisesOtherSpellings()
     {
         Assert.True(ProjectFileEditor.CoversAssets(XDocument.Parse("<Project><ItemGroup><AvaloniaResource Include=\"Styles\\**;Assets/**/*\" /></ItemGroup></Project>")));
         Assert.False(ProjectFileEditor.CoversAssets(XDocument.Parse("<Project><ItemGroup><AvaloniaResource Include=\"Styles\\**\" /></ItemGroup></Project>")));
+    }
+
+    [Fact]
+    public void Settings_WithNullsInValidJson_FallBackToDefaultsForThoseValues()
+    {
+        var path = Path.Combine(_dir, "settings.json");
+        File.WriteAllText(path, "{ \"Recent\": null, \"CustomEditorCommand\": null, \"SnapToGrid\": true }");
+
+        var settings = new SettingsStore(path).Load();
+
+        Assert.Empty(settings.Recent);
+        Assert.Equal("", settings.CustomEditorCommand);
+        Assert.True(settings.SnapToGrid); // the rest still loads
+        Assert.True(new SettingsStore(path).Save(settings));
+        Assert.Empty(Directory.EnumerateFiles(_dir, "*.tmp"));
     }
 
     [Fact]

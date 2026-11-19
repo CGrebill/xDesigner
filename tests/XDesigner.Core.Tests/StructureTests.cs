@@ -110,6 +110,21 @@ public class StructureTests
     }
 
     [Fact]
+    public void GridDefinitions_WithSettingsTheEditorDoesNotModel_AreNotEditable()
+    {
+        static IReadOnlyList<GridDefinition>? Rows(string definitions) =>
+            GridDefinitions.Read(XamlDocument.Parse(
+                "<Grid xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\">" +
+                $"<Grid.RowDefinitions>{definitions}</Grid.RowDefinitions></Grid>").Root.Element, rows: true);
+
+        Assert.NotNull(Rows("<RowDefinition Height=\"Auto\" MinHeight=\"20\" />\n<RowDefinition />"));
+        Assert.Null(Rows("<RowDefinition Height=\"Auto\" SharedSizeGroup=\"Label\" />"));
+        Assert.Null(Rows("<RowDefinition x:Name=\"r0\" />"));
+        Assert.Null(Rows("<RowDefinition MinHeight=\"{StaticResource M}\" />"));
+        Assert.Null(Rows("<!-- header --><RowDefinition />"));
+    }
+
+    [Fact]
     public void GridDefinitions_ReadCompactAndElementForms()
     {
         var (doc, _, _) = Open();

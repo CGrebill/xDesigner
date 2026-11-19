@@ -245,7 +245,16 @@ public sealed class RenderHostManager : IAsyncDisposable
         catch (RenderHostStartException ex) when (ex.IsSetupFailure && userAssemblyPath is not null)
         {
             Log?.Invoke($"The project's App could not start inside the renderer; using the default Fluent theme instead.{Environment.NewLine}{FirstLines(ex.ErrorOutput, 3)}");
-            connection = await RenderHostConnection.StartAsync(new RenderHostStartInfo(_hostExecutable, userAssemblyPath, UseUserApplication: false)).ConfigureAwait(false);
+            try
+            {
+                connection = await RenderHostConnection.StartAsync(new RenderHostStartInfo(_hostExecutable, userAssemblyPath, UseUserApplication: false)).ConfigureAwait(false);
+            }
+            catch (RenderHostStartException fallback)
+            {
+                // The sibling catch below doesn't see exceptions thrown here, so log this one's diagnostics too.
+                Log?.Invoke($"{fallback.Message}{Environment.NewLine}{FirstLines(fallback.ErrorOutput, 5)}");
+                throw;
+            }
         }
         catch (RenderHostStartException ex)
         {

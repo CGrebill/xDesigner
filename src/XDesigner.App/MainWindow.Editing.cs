@@ -1,3 +1,4 @@
+using XDesigner.App.Services;
 using XDesigner.App.ViewModels;
 using XDesigner.Core.Toolbox;
 using Microsoft.UI.Windowing;
@@ -186,6 +187,11 @@ public sealed partial class MainWindow
         }
 
         args.Cancel = true;
+        if (DialogGuard.IsOpen)
+        {
+            return; // the close button pressed again while "Save changes?" (or another dialog) is showing
+        }
+
         if (await ConfirmCloseAllAsync())
         {
             _closeConfirmed = true;
@@ -228,7 +234,7 @@ public sealed partial class MainWindow
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        return await dialog.ShowAsync() switch
+        return await dialog.ShowOnceAsync() switch
         {
             ContentDialogResult.Primary => TrySave(doc),
             ContentDialogResult.Secondary => true,
@@ -248,6 +254,11 @@ public sealed partial class MainWindow
     private bool TrySave(DocumentViewModel doc)
     {
         Properties.FlushPendingEdits(); // Ctrl+S while typing in a property saves that value too
+        if (!ViewModel.CanSaveOverDisk(doc))
+        {
+            return false;
+        }
+
         try
         {
             doc.Save();

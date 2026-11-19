@@ -69,7 +69,8 @@ public sealed class CodeBehindTests : IDisposable
 
         // A name used by something that isn't a fitting method gets a suffix.
         var pointer = new HandlerSignature("object?", "PointerPressedEventArgs", "Avalonia.Input", ["PointerEventArgs", "RoutedEventArgs", "EventArgs"]);
-        var path2 = Write("B.axaml.cs", FileScoped.Replace("    public MainWindow()", "    private int ok_Click;\r\n\r\n    public MainWindow()", StringComparison.Ordinal));
+        Directory.CreateDirectory(Path.Combine(_dir, "other")); // not next to A, which declares the same partial class
+        var path2 = Write(Path.Combine("other", "B.axaml.cs"), FileScoped.Replace("    public MainWindow()", "    private int ok_Click;\r\n\r\n    public MainWindow()", StringComparison.Ordinal));
         var suffixed = CodeBehindWriter.EnsureHandler(path2, "App.Views.MainWindow", "ok_Click", pointer);
         Assert.Equal("ok_Click_1", suffixed.MethodName);
         Assert.Contains("using Avalonia.Input;\r\nusing Avalonia.Interactivity;", File.ReadAllText(path2));
@@ -120,6 +121,48 @@ public sealed class CodeBehindTests : IDisposable
         Assert.Empty(diagnostics);
         Assert.Equal(["a_Click", "b_TextChanged"], CodeBehindWriter.CompatibleMethods(path, "App.Views.MainWindow", TextChanged).Select(m => m.Name));
         Assert.Equal(["a_Click"], CodeBehindWriter.CompatibleMethods(path, "App.Views.MainWindow", Click).Select(m => m.Name).Where(n => n == "a_Click"));
+    }
+
+    [Fact]
+    public void AHandlerInAnotherPartOfTheClass_IsReused_NotDuplicated()
+    {
+        var path = Write("MainWindow.axaml.cs", FileScoped);
+        var handlers = Write("MainWindow.Handlers.cs",
+            "using Avalonia.Interactivity;\r\n\r\nnamespace App.Views;\r\n\r\npublic partial class MainWindow\r\n{\r\n" +
+            "    private void ok_Click(object? sender, RoutedEventArgs e)\r\n    {\r\n    }\r\n\r\n    private int busy_Click;\r\n}\r\n");
+
+        var reused = CodeBehindWriter.EnsureHandler(path, "App.Views.MainWindow", "ok_Click", Click);
+        Assert.Equal((false, handlers, 7), (reused.Created, reused.FilePath, reused.Line));
+        Assert.Equal(FileScoped, File.ReadAllText(path));
+
+        // A name taken by a member in the other part, or by a control's x:Name field, gets a suffix.
+        Assert.Equal("busy_Click_1", CodeBehindWriter.EnsureHandler(path, "App.Views.MainWindow", "busy_Click", Click).MethodName);
+        Assert.Equal("ok_1", CodeBehindWriter.EnsureHandler(path, "App.Views.MainWindow", "ok", Click, new HashSet<string> { "ok" }).MethodName);
+    }
+
+    [Fact]
+    public void AFileThatIsNotUtf8_IsRefused_AndLeftAlone()
+    {
+        var path = Path.Combine(_dir, "MainWindow.axaml.cs");
+        var original = Encoding.Latin1.GetBytes(FileScoped.Replace("InitializeComponent();", "InitializeComponent(); // Größe", StringComparison.Ordinal));
+        File.WriteAllBytes(path, original);
+
+        var ex = Assert.Throws<CodeBehindException>(() => CodeBehindWriter.EnsureHandler(path, "App.Views.MainWindow", "ok_Click", Click));
+
+        Assert.Contains("UTF-8", ex.Message);
+        Assert.Equal(original, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void AFileWithSyntaxErrors_IsRefused_AndLeftAlone()
+    {
+        var broken = FileScoped.Replace("    }\r\n}\r\n", "    }\r\n", StringComparison.Ordinal); // the class's closing brace is missing
+        var path = Write("MainWindow.axaml.cs", broken);
+
+        var ex = Assert.Throws<CodeBehindException>(() => CodeBehindWriter.EnsureHandler(path, "App.Views.MainWindow", "ok_Click", Click));
+
+        Assert.Contains("syntax error", ex.Message);
+        Assert.Equal(broken, File.ReadAllText(path));
     }
 
     // ---- DesignerActions.ConnectHandler ----

@@ -83,7 +83,13 @@ public sealed partial class DesignerActions
                 created = true;
             }
 
-            handler = CodeBehindWriter.EnsureHandler(codeBehind, className, method, HandlerSignature.From(evt));
+            var fields = NameGenerator.UsedNames(_document);
+            if (newName is not null)
+            {
+                fields.Add(newName);
+            }
+
+            handler = CodeBehindWriter.EnsureHandler(codeBehind, className, method, HandlerSignature.From(evt), fields);
         }
         catch (CodeBehindException ex)
         {

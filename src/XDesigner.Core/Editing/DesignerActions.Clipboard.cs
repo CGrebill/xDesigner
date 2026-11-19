@@ -65,9 +65,10 @@ public sealed partial class DesignerActions
     public IReadOnlyList<int>? Paste(string text, int? selectedId, LayoutIndex layout, ControlCatalog catalog, out string? problem)
     {
         XElement parsed;
+        XmlNamespaceManager context;
         try
         {
-            parsed = XElement.Parse(text, LoadOptions.PreserveWhitespace);
+            (parsed, context) = ParseClipboard(text);
         }
         catch (XmlException)
         {
@@ -124,6 +125,7 @@ public sealed partial class DesignerActions
         var indent = XamlFormatting.ChildIndent(target.Element);
         var clones = new List<XElement>();
 
+        var declaredPrefixes = new Dictionary<string, XNamespace>(StringComparer.Ordinal);
         foreach (var element in elements)
         {
             var clone = new XElement(element);
@@ -141,11 +143,34 @@ public sealed partial class DesignerActions
             NormalizeForTarget(clone, targetKind);
             XamlFormatting.Reindent(clone, indent, unit);
 
+            // Prefixes written inside values (x:DataType="vm:Item", {x:Static local:…}) must keep their exact name.
+            foreach (var prefix in PrefixesInValues(clone))
+            {
+                var ns = element.GetNamespaceOfPrefix(prefix) ?? (context.LookupNamespace(prefix) is { } n ? XNamespace.Get(n) : null);
+                if (ns is null || root.GetNamespaceOfPrefix(prefix) == ns
+                    || (declaredPrefixes.TryGetValue(prefix, out var already) && already == ns))
+                {
+                    continue;
+                }
+
+                if (root.GetNamespaceOfPrefix(prefix) is null && !declaredPrefixes.ContainsKey(prefix))
+                {
+                    commands.Add(new SetAttributeCommand(_document.Root.Id, XNamespace.Xmlns + prefix, ns.NamespaceName));
+                    declaredPrefixes[prefix] = ns;
+                    declared.Add(ns);
+                }
+                else
+                {
+                    // The document uses that prefix for something else: declare it on the pasted element only.
+                    clone.SetAttributeValue(XNamespace.Xmlns + prefix, ns.NamespaceName);
+                }
+            }
+
             foreach (var ns in UsedNamespaces(clone))
             {
-                if (root.GetPrefixOfNamespace(ns) is null && root.GetDefaultNamespace() != ns && declared.Add(ns))
+                if (root.GetPrefixOfNamespace(ns) is null && root.GetDefaultNamespace() != ns && clone.GetPrefixOfNamespace(ns) is null && declared.Add(ns))
                 {
-                    var prefix = UniquePrefix(root, (isFragment ? parsed.GetPrefixOfNamespace(ns) : null) ?? "local");
+                    var prefix = UniquePrefix(root, (isFragment ? parsed.GetPrefixOfNamespace(ns) : context.LookupPrefix(ns.NamespaceName)) ?? "local");
                     commands.Add(new SetAttributeCommand(_document.Root.Id, XNamespace.Xmlns + prefix, ns.NamespaceName));
                 }
             }
@@ -165,6 +190,42 @@ public sealed partial class DesignerActions
         var set = nodes.Select(n => n.Id).ToHashSet();
         return nodes.Where(n => !n.AncestorsAndSelf().Skip(1).Any(a => set.Contains(a.Id)));
     }
+
+    /// <summary>
+    /// Parses clipboard text. Prefixes a plain snippet uses without declaring them (<c>x:Name</c>, or a prefix this
+    /// document declares) resolve as they would in this document. DTDs are refused.
+    /// </summary>
+    private (XElement Element, XmlNamespaceManager Context) ParseClipboard(string text)
+    {
+        var names = new NameTable();
+        var context = new XmlNamespaceManager(names);
+        foreach (var declaration in _document.Xml.Root!.Attributes().Where(a => a.IsNamespaceDeclaration && a.Name.Namespace == XNamespace.Xmlns))
+        {
+            context.AddNamespace(declaration.Name.LocalName, declaration.Value);
+        }
+
+        foreach (var (prefix, ns) in new[] { ("x", XamlNamespaces.Xaml), ("d", XamlNamespaces.Design), ("mc", XamlNamespaces.MarkupCompatibility) })
+        {
+            if (context.LookupNamespace(prefix) is null)
+            {
+                context.AddNamespace(prefix, ns);
+            }
+        }
+
+        var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
+        using var reader = XmlReader.Create(new StringReader(text), settings, new XmlParserContext(names, context, null, XmlSpace.Preserve));
+        return (XElement.Load(reader, LoadOptions.PreserveWhitespace), context);
+    }
+
+    /// <summary>Prefixes used as <c>prefix:Name</c> inside attribute values.</summary>
+    private static IEnumerable<string> PrefixesInValues(XElement element) =>
+        element.DescendantsAndSelf().SelectMany(e => e.Attributes()).Where(a => !a.IsNamespaceDeclaration)
+            .SelectMany(a => ValuePrefix().Matches(a.Value).Select(m => m.Groups["p"].Value))
+            .Where(p => p is not ("xml" or "xmlns"))
+            .Distinct(StringComparer.Ordinal);
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"(?<![\w.:])(?<p>[A-Za-z_][\w.-]*):(?=[A-Za-z_])")]
+    private static partial System.Text.RegularExpressions.Regex ValuePrefix();
 
     /// <summary>A plain pasted snippet written without xmlns gets the Avalonia namespace.</summary>
     private static void GiveDefaultNamespace(XElement element)

@@ -75,6 +75,11 @@ public sealed class ProjectTests : IDisposable
     [InlineData(@"  C:\App\Views\A.axaml(3): error AVLN2000: Unable to resolve type Foo [C:\App\App.csproj]", @"C:\App\Views\A.axaml", 3, null, true, "AVLN2000", "Unable to resolve type Foo")]
     [InlineData(@"C:\App\Program.cs(1,1,1,5): warning CS8019: Unnecessary using directive.", @"C:\App\Program.cs", 1, 1, false, "CS8019", "Unnecessary using directive.")]
     [InlineData("MSBUILD : error MSB1009: Project file does not exist.", null, null, null, true, "MSB1009", "Project file does not exist.")]
+    [InlineData(@"C:\Work\App - Copy (2)\MainWindow.axaml.cs(7,9): error CS0103: The name 'x' does not exist [C:\Work\App - Copy (2)\App.csproj]",
+        @"C:\Work\App - Copy (2)\MainWindow.axaml.cs", 7, 9, true, "CS0103", "The name 'x' does not exist")]
+    [InlineData(@"C:\App\App.csproj : error NU1101: Unable to find package Avalonia. [C:\App\App.csproj]", null, null, null, true, "NU1101", "Unable to find package Avalonia.")]
+    [InlineData(@"C:\App\MainWindow.axaml(5,6,5,6): Avalonia error AVLN2000: Unable to resolve type Foo [C:\App\App.csproj]",
+        @"C:\App\MainWindow.axaml", 5, 6, true, "AVLN2000", "Unable to resolve type Foo")]
     public void BuildOutput_LinesAreParsed(string line, string? file, int? lineNo, int? col, bool isError, string code, string message)
     {
         var d = BuildRunner.ParseLine(line)!;

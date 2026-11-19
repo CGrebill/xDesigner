@@ -30,6 +30,12 @@ public sealed class ProjectTemplateTests : IDisposable
     [InlineData("1App", "start")]
     [InlineData("My App", "no spaces")]
     [InlineData("App.", "no spaces")]
+    [InlineData("Window", "type name")]
+    [InlineData("Shop.Application", "type name")]
+    [InlineData("Avalonia", "package")]
+    [InlineData("avalonia.Desktop", "package")]
+    [InlineData("AvaloniaDemo", null)]
+    [InlineData("Shop.App", null)]
     public void ProjectNames_AreValidated(string name, string? problemPart)
     {
         var problem = ProjectTemplates.ValidateProjectName(name);
@@ -75,6 +81,15 @@ public sealed class ProjectTemplateTests : IDisposable
     }
 
     [Fact]
+    public void CreateApp_TitleStartingWithABrace_IsNotAMarkupExtension()
+    {
+        var project = ProjectTemplates.CreateApp(_dir, "Braces", "{My App}");
+
+        var window = XamlDocument.Load(Path.Combine(Path.GetDirectoryName(project)!, "MainWindow.axaml"));
+        Assert.Equal("{}{My App}", (string?)window.Root.Element.Attribute("Title"));
+    }
+
+    [Fact]
     public void CreateItem_UsesTheFolderNamespace_AndRefusesDuplicates()
     {
         var info = new ProjectInfo(Path.Combine(_dir, "App.csproj"), "App", "App", "Shop.App", "", "net10.0", "WinExe");
@@ -90,6 +105,8 @@ public sealed class ProjectTemplateTests : IDisposable
 
         Assert.NotNull(ProjectTemplates.ValidateItemName(views, "AboutBox"));
         Assert.NotNull(ProjectTemplates.ValidateItemName(views, "class"));
+        Assert.Contains("derive from itself", ProjectTemplates.ValidateItemName(views, "Window"));
+        Assert.Contains("derive from itself", ProjectTemplates.ValidateItemName(views, "UserControl"));
         Assert.Contains("x:Class=\"Shop.App.Settings\"", File.ReadAllText(ProjectTemplates.CreateItem(info, _dir, "Settings", ItemKind.Window)));
     }
 

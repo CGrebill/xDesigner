@@ -97,7 +97,14 @@ public sealed partial class MainWindow
             {
                 var package = new DataPackage();
                 package.SetText(handler.MethodName);
-                Clipboard.SetContent(package);
+                try
+                {
+                    Clipboard.SetContent(package);
+                }
+                catch (System.Runtime.InteropServices.COMException)
+                {
+                    ShowNotification(NotifyKind.Warning, "Another program is using the clipboard. Try again in a moment.");
+                }
             }, Dismisses: false),
         ]);
     }

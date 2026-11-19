@@ -38,6 +38,26 @@ public class UndoTests
 
     public static TheoryData<string> Containers() => ["Grid", "Border", "StackPanel", "Canvas", "Window"];
 
+    [Fact]
+    public void TrimmingPastTheOpenedState_KeepsTheDocumentDirty()
+    {
+        var (doc, undo) = Open();
+        var stack = Id(doc, "StackPanel");
+
+        for (var i = 0; i <= UndoManager.MaxDepth; i++)
+        {
+            undo.Execute(new InsertElementCommand(stack, NewButton(), int.MaxValue, "Add"));
+        }
+
+        while (undo.CanUndo)
+        {
+            undo.Undo();
+        }
+
+        Assert.NotEqual(Source, doc.ToXaml()); // the first edit can no longer be undone…
+        Assert.True(undo.IsDirty);             // …so the document still differs from the file
+    }
+
     [Theory]
     [MemberData(nameof(Containers))]
     public void InsertThenUndo_RestoresExactText(string container)

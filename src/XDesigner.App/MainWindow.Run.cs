@@ -1,3 +1,4 @@
+using XDesigner.App.Services;
 using XDesigner.Core.Project;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -26,7 +27,11 @@ public sealed partial class MainWindow
         AddWindowMenuItem.IsEnabled = AddUserControlMenuItem.IsEnabled = project is not null;
     }
 
-    private async void Run_Click(object sender, RoutedEventArgs e) => await ViewModel.RunAsync();
+    private async void Run_Click(object sender, RoutedEventArgs e)
+    {
+        Properties.FlushPendingEdits(); // Run saves the documents: include a value still being typed (§9.2)
+        await ViewModel.RunAsync();
+    }
 
     private void Stop_Click(object sender, RoutedEventArgs e) => ViewModel.StopRun();
 
@@ -102,7 +107,7 @@ public sealed partial class MainWindow
         };
         Validate();
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        if (await dialog.ShowOnceAsync() != ContentDialogResult.Primary)
         {
             return;
         }
@@ -167,7 +172,7 @@ public sealed partial class MainWindow
 
         name.TextChanged += (_, _) => Validate();
         Validate();
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary
+        if (await dialog.ShowOnceAsync() == ContentDialogResult.Primary
             && await ViewModel.AddItemAsync(kind, name.Text.Trim(), folder) is { } failed)
         {
             ShowNotification(NotifyKind.Error, $"Couldn't add the {label}: {failed}");

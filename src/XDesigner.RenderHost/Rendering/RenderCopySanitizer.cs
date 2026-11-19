@@ -30,7 +30,7 @@ internal sealed class RenderCopySanitizer(XamlTypeResolver resolver)
         try
         {
             // PreserveWhitespace + DisableFormatting keep line numbers identical, so loader errors still point at the right line.
-            document = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace);
+            document = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
         }
         catch (System.Xml.XmlException)
         {
@@ -66,9 +66,10 @@ internal sealed class RenderCopySanitizer(XamlTypeResolver resolver)
             }
         }
 
-        return document.Declaration is null
-            ? document.Root!.ToString(SaveOptions.DisableFormatting)
-            : document.ToString(SaveOptions.DisableFormatting);
+        // Lines before the root (a declaration, a license comment) become empty lines, so error lines still match.
+        var root = document.Root!;
+        var line = root is System.Xml.IXmlLineInfo info && info.HasLineInfo() ? info.LineNumber : 1;
+        return new string('\n', Math.Max(0, line - 1)) + root.ToString(SaveOptions.DisableFormatting);
     }
 
     private bool IsEventAttribute(XElement element, Type elementType, XAttribute attribute)

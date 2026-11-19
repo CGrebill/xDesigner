@@ -20,7 +20,7 @@ public static class RenderCopyBuilder
     /// <summary>Ids in document order (1, 2, 3, ...).</summary>
     public static string Build(string xaml)
     {
-        var document = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace);
+        var document = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
         var next = 0;
         return Build(document, _ => ++next);
     }
@@ -51,7 +51,17 @@ public static class RenderCopyBuilder
             }
         }
 
-        return copy.Declaration is null ? root.ToString(SaveOptions.DisableFormatting) : copy.ToString(SaveOptions.DisableFormatting);
+        return WithRootOnItsLine(source.Root!, root);
+    }
+
+    /// <summary>
+    /// The root element's text, preceded by as many line breaks as there were lines before it in the file, so the
+    /// loader's error line numbers match the file even when it starts with a declaration or comments (§8.5).
+    /// </summary>
+    public static string WithRootOnItsLine(XElement original, XElement root)
+    {
+        var line = original is System.Xml.IXmlLineInfo info && info.HasLineInfo() ? info.LineNumber : 1;
+        return new string('\n', Math.Max(0, line - 1)) + root.ToString(SaveOptions.DisableFormatting);
     }
 
     /// <summary>

@@ -485,6 +485,23 @@ public sealed partial class DocumentViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// The file's text when another program changed it since the designer last loaded or saved it; null otherwise
+    /// (also when it can't be read, or no longer exists).
+    /// </summary>
+    public string? TextChangedOnDisk()
+    {
+        try
+        {
+            var text = File.ReadAllText(FilePath);
+            return text == DiskText ? null : text;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     public void Save()
     {
         Xaml.Save(FilePath);

@@ -84,10 +84,20 @@ public static class GridDefinitions
             return [];
         }
 
+        // Rewriting the definitions would lose anything the editor doesn't model (comments, SharedSizeGroup, x:Name,
+        // resource or binding values), so such definitions aren't editable here.
+        if (element.Nodes().Any(n => n is not XElement && !(n is XText t && string.IsNullOrWhiteSpace(t.Value))))
+        {
+            return null;
+        }
+
+        var modeled = new HashSet<string>(StringComparer.Ordinal) { size, $"Min{size}", $"Max{size}" };
         var result = new List<GridDefinition>();
         foreach (var definition in element.Elements())
         {
-            if (definition.Name.LocalName != $"{axis}Definition")
+            if (definition.Name.LocalName != $"{axis}Definition" || definition.Nodes().Any(n => !(n is XText t && string.IsNullOrWhiteSpace(t.Value)))
+                || definition.Attributes().Any(a => a.IsNamespaceDeclaration || a.Name.Namespace != XNamespace.None || !modeled.Contains(a.Name.LocalName))
+                || !IsNumberOrAbsent(definition, $"Min{size}") || !IsNumberOrAbsent(definition, $"Max{size}"))
             {
                 return null;
             }
@@ -121,6 +131,9 @@ public static class GridDefinitions
         var earlier = edited.Select((d, i) => (d.OriginalIndex, i)).Where(x => x.OriginalIndex < old).Select(x => x.i).DefaultIfEmpty(0).Max();
         return earlier;
     }
+
+    private static bool IsNumberOrAbsent(XElement element, string attribute) =>
+        element.Attribute(attribute) is null || Number(element, attribute) is not null;
 
     private static double? Number(XElement element, string attribute) =>
         (string?)element.Attribute(attribute) is { } text && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : null;

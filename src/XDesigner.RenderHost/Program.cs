@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -60,6 +61,10 @@ internal static class Program
     /// <summary>Server mode: start Avalonia, then serve the designer app over the named pipe.</summary>
     private static int Serve(RenderHostOptions options)
     {
+        // The server watches the designer once it runs; until then (the project's App may hang while it's created),
+        // a designer that goes away ends this process here.
+        using var parent = options.ParentProcessId is { } pid ? ExitIfParentExitsDuringStartup(pid) : null;
+
         HostRuntime runtime;
         try
         {
@@ -71,10 +76,43 @@ internal static class Program
             Console.Error.WriteLine($"Setup failed: {ex}");
             return ExitCodes.SetupFailed;
         }
+        finally
+        {
+            s_started = true;
+        }
 
         using (runtime)
         {
             return RenderHostServer.RunAsync(options, runtime).GetAwaiter().GetResult();
+        }
+    }
+
+    private static volatile bool s_started;
+
+    private static Process? ExitIfParentExitsDuringStartup(int parentPid)
+    {
+        try
+        {
+            var parent = Process.GetProcessById(parentPid);
+            parent.EnableRaisingEvents = true;
+            parent.Exited += (_, _) =>
+            {
+                if (!s_started)
+                {
+                    Environment.Exit(ExitCodes.Ok);
+                }
+            };
+            if (parent.HasExited)
+            {
+                Environment.Exit(ExitCodes.Ok);
+            }
+
+            return parent;
+        }
+        catch (ArgumentException)
+        {
+            Environment.Exit(ExitCodes.Ok); // already gone
+            return null;
         }
     }
 

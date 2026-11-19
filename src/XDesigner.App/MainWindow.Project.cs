@@ -1,3 +1,4 @@
+using XDesigner.App.Services;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using XDesigner.App.ViewModels;
@@ -95,7 +96,11 @@ public sealed partial class MainWindow
         }
     }
 
-    private async void Rebuild_Click(object sender, RoutedEventArgs e) => await ViewModel.BuildAsync();
+    private async void Rebuild_Click(object sender, RoutedEventArgs e)
+    {
+        Properties.FlushPendingEdits(); // the build saves the documents: include a value still being typed (§9.2)
+        await ViewModel.BuildAsync();
+    }
 
     private void CloseProject_Click(object sender, RoutedEventArgs e) => ViewModel.CloseProject();
 
@@ -122,6 +127,6 @@ public sealed partial class MainWindow
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary && list.SelectedIndex >= 0 ? projects[list.SelectedIndex] : null;
+        return await dialog.ShowOnceAsync() == ContentDialogResult.Primary && list.SelectedIndex >= 0 ? projects[list.SelectedIndex] : null;
     }
 }

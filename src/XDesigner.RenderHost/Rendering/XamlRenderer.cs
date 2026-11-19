@@ -80,7 +80,7 @@ internal sealed class XamlRenderer
             window.Show();
             LayoutPasses(window);
 
-            var scale = request.Scale > 0 ? request.Scale : 1.0;
+            var scale = EffectiveScale(window.ClientSize, request.Scale);
             var (pixelWidth, pixelHeight, pixels) = RenderPixels(window, scale);
             var layout = LayoutTreeBuilder.Build(window);
 
@@ -156,12 +156,31 @@ internal sealed class XamlRenderer
         }
     }
 
+    /// <summary>The most pixels one frame may have (32 MP, 128 MB of BGRA); a larger frame is rendered at a lower scale.</summary>
+    internal const double MaxFramePixels = 32_000_000;
+
+    /// <summary>
+    /// The requested scale, lowered when the frame would exceed <see cref="MaxFramePixels"/> (a large window at a high zoom):
+    /// the result carries the scale used, and the surface stretches the frame to fit.
+    /// </summary>
+    internal static double EffectiveScale(Size size, double requested)
+    {
+        var scale = requested is > 0 and < double.PositiveInfinity ? requested : 1.0;
+        var area = Math.Max(1, size.Width) * Math.Max(1, size.Height);
+        return area * scale * scale > MaxFramePixels ? Math.Sqrt(MaxFramePixels / area) : scale;
+    }
+
     private static (int Width, int Height, byte[] Pixels) RenderPixels(Window window, double scale)
     {
         var size = window.ClientSize;
-        var pixelSize = new PixelSize(
-            Math.Max(1, (int)Math.Ceiling(size.Width * scale)),
-            Math.Max(1, (int)Math.Ceiling(size.Height * scale)));
+        var width = Math.Max(1, Math.Ceiling(size.Width * scale));
+        var height = Math.Max(1, Math.Ceiling(size.Height * scale));
+        if (width * height * 4 > Array.MaxLength)
+        {
+            throw new InvalidOperationException($"The form is too large to draw ({size.Width:F0}×{size.Height:F0}).");
+        }
+
+        var pixelSize = new PixelSize((int)width, (int)height);
 
         using var bitmap = new RenderTargetBitmap(pixelSize, new Vector(96 * scale, 96 * scale));
         bitmap.Render(window);

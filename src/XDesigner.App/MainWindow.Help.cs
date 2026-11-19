@@ -1,3 +1,4 @@
+using XDesigner.App.Services;
 using System.Diagnostics;
 using System.Reflection;
 using Microsoft.UI.Xaml;
@@ -72,7 +73,7 @@ public sealed partial class MainWindow
                 },
             },
         };
-        await dialog.ShowAsync();
+        await dialog.ShowOnceAsync();
     }
 
     /// <summary>Opens a URL, folder or file with its default program; says so in a notification if that fails.</summary>

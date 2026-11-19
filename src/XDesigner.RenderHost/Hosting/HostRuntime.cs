@@ -118,6 +118,14 @@ internal sealed class HostRuntime : IDisposable
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
             .SetupWithoutStarting();
 
+        // User code that runs outside a render (a control's timer, an async void handler) must not end the host:
+        // without this, its exception leaves MainLoop and the process exits, over and over while the last render lives.
+        Dispatcher.UIThread.UnhandledException += (_, e) =>
+        {
+            Console.Error.WriteLine($"Unhandled exception in user code (ignored): {e.Exception}");
+            e.Handled = true;
+        };
+
         ApplicationTypeName = Application.Current?.GetType().FullName ?? "";
     }
 

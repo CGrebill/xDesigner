@@ -73,9 +73,11 @@ public static partial class BuildRunner
         }
     }
 
-    [GeneratedRegex(@"^\s*(?<file>[^\s(][^(]*?)\((?<line>\d+)(?:,(?<col>\d+))?(?:,\d+,\d+)?\)\s*:\s*(?<sev>error|warning)\s+(?<code>[A-Za-z]+\d*)\s*:\s*(?<msg>.*?)(?:\s+\[[^\]]+\])?\s*$")]
+    // The file may contain parentheses ("App - Copy (2)") and drive colons; MSBuild may print a subcategory before the
+    // severity ("Avalonia error AVLN2000").
+    [GeneratedRegex(@"^\s*(?<file>\S.*?)\((?<line>\d+)(?:,(?<col>\d+))?(?:,\d+,\d+)?\)\s*:\s*(?:[\w.-]+\s+)?(?<sev>error|warning)\s+(?<code>[A-Za-z]+\d*)\s*:\s*(?<msg>.*?)(?:\s+\[[^\]]+\])?\s*$")]
     private static partial Regex WithPosition();
 
-    [GeneratedRegex(@"^\s*(?<file>[^:(]+?)\s*:\s*(?<sev>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<msg>.*?)(?:\s+\[[^\]]+\])?\s*$")]
+    [GeneratedRegex(@"^\s*(?<file>\S.*?)\s*:\s*(?:[\w.-]+\s+)?(?<sev>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<msg>.*?)(?:\s+\[[^\]]+\])?\s*$")]
     private static partial Regex WithoutPosition();
 }

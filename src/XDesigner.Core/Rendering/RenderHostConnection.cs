@@ -100,11 +100,13 @@ public sealed class RenderHostConnection : IAsyncDisposable
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout ?? DefaultStartTimeout);
 
-        var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        // CurrentUserOnly: only connect to a pipe server running as this user.
+        var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        Task? connect = null;
         try
         {
             // The host creates the pipe only after Avalonia is set up; if it exits first, report why.
-            var connect = pipe.ConnectAsync(timeoutCts.Token);
+            connect = pipe.ConnectAsync(timeoutCts.Token);
             var exited = process.WaitForExitAsync(timeoutCts.Token);
             if (await Task.WhenAny(connect, exited).ConfigureAwait(false) == exited && !connect.IsCompletedSuccessfully)
             {
@@ -130,8 +132,7 @@ public sealed class RenderHostConnection : IAsyncDisposable
         }
         catch (Exception ex) when (ex is not RenderHostStartException)
         {
-            await pipe.DisposeAsync().ConfigureAwait(false);
-            KillQuietly(process);
+            await AbandonAsync(timeoutCts, connect, pipe, process).ConfigureAwait(false);
             if (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested)
             {
                 throw new RenderHostStartException("The render host did not start in time.", null, await stderr.ReadAllAsync().ConfigureAwait(false));
@@ -141,9 +142,36 @@ public sealed class RenderHostConnection : IAsyncDisposable
         }
         catch
         {
-            await pipe.DisposeAsync().ConfigureAwait(false);
-            KillQuietly(process);
+            await AbandonAsync(timeoutCts, connect, pipe, process).ConfigureAwait(false);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Cleans up a start that failed. The pending connect is cancelled first: otherwise, once the host has exited,
+    /// <see cref="NamedPipeClientStream.ConnectAsync(CancellationToken)"/> keeps polling for a pipe that will never appear.
+    /// </summary>
+    private static async Task AbandonAsync(CancellationTokenSource timeoutCts, Task? connect, NamedPipeClientStream pipe, Process process)
+    {
+        await CancelConnectAsync(timeoutCts, connect).ConfigureAwait(false);
+        await pipe.DisposeAsync().ConfigureAwait(false);
+        KillQuietly(process);
+    }
+
+    /// <summary>Cancels a pending pipe connect and waits for it to end.</summary>
+    internal static async Task CancelConnectAsync(CancellationTokenSource cts, Task? connect)
+    {
+        await cts.CancelAsync().ConfigureAwait(false);
+        if (connect is not null)
+        {
+            try
+            {
+                await connect.ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or IOException or TimeoutException or ObjectDisposedException)
+            {
+                // Expected: the connect was abandoned.
+            }
         }
     }
 

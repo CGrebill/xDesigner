@@ -28,9 +28,24 @@ public class XamlDocumentTests
         "  </Grid>\r\n" +
         "</Window>\r\n";
 
+    /// <summary>Text the writer used to re-escape: entities, a raw '&gt;', an encoded line break, PIs, a comment after the root.</summary>
+    private const string TextEdgeCases =
+        "<Window xmlns=\"https://github.com/avaloniaui\">\r\n" +
+        "  <StackPanel>\r\n" +
+        "    <TextBlock>a > b &quot;quoted&quot; &apos;x&apos; &#160;nbsp &#x2014;</TextBlock>\r\n" +
+        "    <TextBox Name=\"box\"><TextBox.Text>one&#13;&#10;two</TextBox.Text></TextBox>\r\n" +
+        "    <!-- crlf -->\r\n" +
+        "    <?designer?>\r\n" +
+        "    <?designer keep this?>\r\n" +
+        "  </StackPanel>\r\n" +
+        "</Window>\r\n" +
+        "<!-- after the root -->\r\n";
+
     public static TheoryData<string> RoundTripCorpus()
     {
-        var data = new TheoryData<string> { MultiLine, MultiLine.Replace("\r\n", "\n"), "<UserControl xmlns=\"https://github.com/avaloniaui\"/>" };
+        var data = new TheoryData<string> { MultiLine, MultiLine.Replace("\r\n", "\n"), "<UserControl xmlns=\"https://github.com/avaloniaui\"/>", TextEdgeCases };
+        data.Add(TextEdgeCases.Replace("\r\n", "\n"));
+        data.Add(TextEdgeCases.Replace("\r\n", "\n").Replace("<!-- crlf -->\n", "<!-- crlf -->\r\n")); // mixed line endings
         var sample = Path.Combine(RepoRoot(), "samples", "SampleAvaloniaApp");
         foreach (var file in Directory.EnumerateFiles(sample, "*.axaml", SearchOption.AllDirectories))
         {
@@ -45,6 +60,40 @@ public class XamlDocumentTests
     public void UneditedDocument_RoundTripsByteForByte(string text)
     {
         Assert.Equal(text, XamlDocument.Parse(text).ToXaml());
+    }
+
+    [Fact]
+    public void EditingAnAttribute_KeepsUneditedTextVerbatim()
+    {
+        var doc = XamlDocument.Parse(TextEdgeCases);
+
+        doc.Xml.Descendants(Av + "TextBox").Single().SetAttributeValue("Name", "renamed");
+
+        Assert.Equal(TextEdgeCases.Replace("Name=\"box\"", "Name=\"renamed\""), doc.ToXaml());
+    }
+
+    [Fact]
+    public void NewTextWithCarriageReturn_RoundTripsAsOneLineBreak()
+    {
+        var doc = XamlDocument.Parse(TextEdgeCases);
+        var text = doc.Xml.Descendants(Av + "TextBox.Text").Single();
+
+        text.Value = "three\r\nfour";
+
+        var reparsed = XDocument.Parse(doc.ToXaml(), LoadOptions.PreserveWhitespace);
+        Assert.Equal("three\r\nfour", reparsed.Descendants(Av + "TextBox.Text").Single().Value);
+    }
+
+    [Fact]
+    public void ChangedText_IsRewritten_OtherTextIsNot()
+    {
+        var doc = XamlDocument.Parse(TextEdgeCases);
+        var block = doc.Xml.Descendants(Av + "TextBlock").Single();
+
+        block.Value = "x < y";
+
+        var expected = TextEdgeCases.Replace("a > b &quot;quoted&quot; &apos;x&apos; &#160;nbsp &#x2014;", "x &lt; y");
+        Assert.Equal(expected, doc.ToXaml());
     }
 
     [Fact]
