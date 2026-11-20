@@ -5,7 +5,7 @@ How xDesigner works, for contributors. Code comments refer to the sections here 
 ## 1. Purpose
 
 xDesigner is a WinForms-style visual designer for C# UI frameworks: today [Avalonia UI](https://avaloniaui.net/) 11 and
-12; WinUI 3 and .NET MAUI are recognised and come next. You drag controls from a toolbox onto a form, edit them in a
+12 and WinUI 3 (Windows App SDK, packaged or unpackaged); .NET MAUI is recognised and comes next. You drag controls from a toolbox onto a form, edit them in a
 properties window, double-click to create event handlers, and write only C#: the designer never shows XAML, it writes
 it. It opens whole solutions (projects of different frameworks side by side, each drawn by its own framework), designs
 their Windows and UserControls, creates projects, and builds and runs them.
@@ -68,15 +68,17 @@ targets; Avalonia versions before 11.1; running the designer itself on anything 
 |---|---|---|
 | `XDesigner.Protocol` | net10.0 | StreamJsonRpc, MessagePack |
 | `XDesigner.Core` | net10.0 | Protocol, Microsoft.CodeAnalysis.CSharp |
-| `XDesigner.RenderHost.Avalonia` (`…Avalonia12.csproj`) | net10.0 exe, win-x64 | Protocol, Avalonia 12 (Headless, Skia, Markup.Xaml.Loader, Themes.Fluent, Fonts.Inter) |
+| `XDesigner.RenderHost.Common` | net10.0 | Protocol, StreamJsonRpc: what every render host shares (options, pipe server, exit codes, PNG writer, render-once output, frame size limits, C# type names) |
+| `XDesigner.RenderHost.Avalonia` (`…Avalonia12.csproj`) | net10.0 exe, win-x64 | Common, Avalonia 12 (Headless, Skia, Markup.Xaml.Loader, Themes.Fluent, Fonts.Inter) |
 | `XDesigner.RenderHost.Avalonia11` | net10.0 exe, win-x64 | The same source, `AVALONIA11` defined, Avalonia 11.3 (`VersionOverride`) |
+| `XDesigner.RenderHost.WinUI` | net10.0-windows10.0.19041.0 exe, x64, WinUI 3 | Common, Windows App SDK |
 | `XDesigner.App` | net10.0-windows10.0.19041.0, x64, WinUI 3 | Core, Protocol, Windows App SDK, CommunityToolkit.Mvvm, CommunityToolkit.WinUI.Controls.Sizers |
-| `tests/*` | xUnit v3 | Core tests are pure; the render host tests start the real renderers against `samples/SampleAvaloniaApp` (12) and `samples/SampleAvalonia11App` (11), from shared sources |
+| `tests/*` | xUnit v3 | Core tests are pure; the render host tests start the real renderers against `samples/SampleAvaloniaApp` (12), `samples/SampleAvalonia11App` (11, from shared sources) and `samples/SampleWinUIApp` (WinUI, out of process) |
 
 Core and Protocol reference no UI framework, so editing logic is unit-testable and a renderer's framework version never
 leaks into the app. The app doesn't reference the render hosts: a build target copies each host's output into
 `renderhosts\{folder}\` next to the app, and publishing publishes them there self-contained (§17). Package versions are
-central in `Directory.Packages.props` (`AvaloniaVersion`, `Avalonia11Version`). Templates and the toolbox lists are
+central in `Directory.Packages.props` (`AvaloniaVersion`, `Avalonia11Version`, `WindowsAppSdkVersion`). Templates and the toolbox lists are
 embedded resources of Core (`Core/Templates`, `Core/Toolbox/toolbox.{family}.json`).
 
 ## 4. Protocol (`XDesigner.Protocol`)
@@ -288,7 +290,9 @@ Undo removes only the XAML link; the method stays. Renaming or deleting a contro
 ### 11.1 Opening
 `.csproj`, `.sln` or `.slnx` opens as a `SolutionModel` (a project on its own is a solution of one): every C# project is
 evaluated in parallel with `dotnet msbuild -getProperty` (TargetPath, AssemblyName, RootNamespace, TargetFramework,
-OutputType; a multi-targeted project is read for its desktop framework, else its Windows one), and `FrameworkDetector`
+OutputType; a multi-targeted project is read for its desktop framework, else its Windows one; a WinUI project without a
+platform of its own for this machine's, `x64` or `ARM64`, since WinUI has no AnyCPU build, and whether it is packaged,
+from `WindowsPackageType`), and `FrameworkDetector`
 finds each project's framework and version. Projects may mix frameworks and versions; each document belongs to the
 innermost project containing it and is drawn by that project's framework version. The startup project (what Run starts,
 what Project ▸ Add adds to) is the first designable app, and can be changed in Solution Explorer. A file opened on its
@@ -298,23 +302,33 @@ with English output, no logo, no telemetry and the classic logger, so its output
 
 ### 11.2 Build
 `dotnet build` of the solution (or the single project) in its folder (its `global.json` picks the SDK), output streamed
-to Output › Build, errors and warnings parsed into Output › Error List (double-click one to go to it). Builds run on
+to Output › Build, errors and warnings parsed into Output › Error List (double-click one to go to it). WinUI projects
+are built with their platform (`-p:Platform=x64`), and a solution that contains one is built project by project
+(`SolutionModel.BuildSteps`), since a solution's platform mapping rarely gives WinUI a platform. Builds run on
 open, on Rebuild and before Run; unsaved files of the solution are saved first. A successful build restarts the
 renderers of the projects whose assemblies changed. Because the renderer loads project assemblies from memory, builds outside the
 designer (VS Code, Visual Studio) never hit locked files, and the designer reloads after them.
 
 ### 11.3 Run
-Save, build, `dotnet run --no-build`; output to Output › Run; Stop kills the process tree. One running instance;
-stopped before builds and when the designer closes.
+Save, build, then `AppRunner`: `dotnet run --no-build` (WinUI with `--property:Platform`); output to Output › Run;
+Stop kills the process tree. A packaged WinUI app runs as Visual Studio deploys it: its build output (a loose package
+layout with `AppxManifest.xml`) is registered (`Add-AppxPackage -Register`) and activated by its app user model id
+through `IApplicationActivationManager`, which returns the process to watch and stop; its console output isn't
+captured. Registering an unsigned package needs Developer Mode (read from the registry, never changed); without it
+the packaged build's exe is started directly, without package identity, and the Run output says so. One running
+instance; stopped before builds and when the designer closes.
 
 ### 11.4 New project
-A framework version (Avalonia 12 or 11), a name, a folder and a title create a desktop app from Core's embedded
-template (no `dotnet new`; both Avalonia versions share it, with the profile's `TemplateVersion`): a
-csproj with an `Assets` resource item, `Program.cs` with an explicit `Main`, `App` and `MainWindow` with code-behind,
-`app.manifest`, `global.json` and `.gitignore`. It is then built and its main window opened.
+A framework version (Avalonia 12 or 11, WinUI 3 unpackaged or packaged), a name, a folder and a title create a desktop
+app from Core's embedded templates (no `dotnet new`; both Avalonia versions share `AvaloniaApp`, with the profile's
+`TemplateVersion`; WinUI has `WinUIApp`): a csproj with an `Assets` item, `Program.cs` with an explicit `Main` (WinUI:
+`DISABLE_XAML_GENERATED_MAIN`), `App` and `MainWindow` with code-behind, `app.manifest`, `global.json` and
+`.gitignore`; a packaged WinUI app also gets `Package.appxmanifest` and generated logo PNGs. It is then built and its
+main window opened.
 
 ### 11.5 New items
-Add window / Add user control create `{Name}.axaml` and `{Name}.axaml.cs` in the project's namespace and open them.
+Add window / Add user control (and Add page in WinUI) create `{Name}.axaml` (`.xaml` in WinUI) and its code-behind in
+the project's namespace from the framework's item templates (`Templates/Items`, `Templates/WinUIItems`) and open them.
 
 ### 11.6 File watching
 Open `.axaml` files are watched. A change on disk that differs from what the designer last loaded or saved reloads
@@ -324,10 +338,12 @@ elsewhere.
 ## 12. Images (`Core/Assets`)
 Image properties get a picker: the project's images under `Assets/` with thumbnails, Browse…, and Remove. Browse copies
 the file into `Assets/` (an identical file is reused; a different file with the same name gets a numbered name), adds
-`<AvaloniaResource Include="Assets\**" />` to the project if nothing covers Assets (a text edit that keeps the rest of
-the file byte for byte), sets the property to `/Assets/{file}`, and rebuilds without saving other files, so the
-renderer has the image. Asset paths that would resolve outside the project are rejected. Files outside a project get a
-message instead.
+the framework's Assets item to the project if nothing covers Assets (a text edit that keeps the rest of the file byte
+for byte), sets the property, and rebuilds without saving other files, so the renderer has the image. Avalonia:
+`<AvaloniaResource Include="Assets\**" />` and `/Assets/{file}`. WinUI: `<Content Include="Assets\**"
+Exclude="@(Content)" CopyToOutputDirectory="PreserveNewest" />` (the exclusion keeps files the project already lists,
+such as Visual Studio's logos, from being packaged twice) and `ms-appx:///Assets/{file}`. Asset paths that would
+resolve outside the project are rejected. Files outside a project get a message instead.
 
 ## 13. Clipboard (`Core/Editing/DesignerActions.Clipboard.cs`)
 Copy writes the top-most selected elements, re-indented, inside an `<xd:Fragment>` with the namespace declarations they
@@ -339,9 +355,11 @@ another document, drops attached properties of other panel kinds and offsets pos
 
 ### 14.0 One host per framework version
 `XDesigner.RenderHost.Avalonia` is built twice: against Avalonia 12 (`XDesigner.RenderHost.Avalonia12.exe`) and, with
-`AVALONIA11` defined for the few API differences (PNG encoding), against Avalonia 11.3
-(`XDesigner.RenderHost.Avalonia11.exe`); Avalonia 11.1 and 11.2 projects run on the 11.3 host. The rest of this section
-describes the Avalonia host; both behave alike.
+`AVALONIA11` defined for the few API differences, against Avalonia 11.3 (`XDesigner.RenderHost.Avalonia11.exe`);
+Avalonia 11.1 and 11.2 projects run on the 11.3 host. `XDesigner.RenderHost.WinUI.exe` draws WinUI 3 (§14.5). What
+doesn't depend on a framework is in `XDesigner.RenderHost.Common`: the command line, the pipe server and its exit
+codes, the PNG writer and render-once output, the frame size limits (`FrameScale`) and C# type names for handlers.
+§14.1–14.4 describe the Avalonia host; §14.5 how the WinUI host differs.
 
 ### 14.1 Startup
 `XDesigner.RenderHost.Avalonia{11|12}.exe --pipe {name} --parent-pid {pid} [--assembly {project dll}] [--no-user-app]` (also
@@ -373,6 +391,34 @@ ToolTip and ScrollViewer; routed and CLR events with their handler signatures. C
 For an element of the last render: each property's value and source (local, style, template, inherited, default) from
 `AvaloniaObjectExtensions.GetDiagnostic`, formatted like the designer writes values (§5.6).
 
+### 14.5 WinUI host
+WinUI can't render headless or load a second app's XAML into a process, so the WinUI host is a WinUI app of its own
+that never shows a window:
+- **Shadow folder.** It runs from a copy of the project's build output with the host's files on top
+  (`Core/Rendering/ShadowHostFolder`, prepared by `RenderHostManager` under `%LOCALAPPDATA%\xDesigner\shadow`): host
+  files are hard-linked, the project's are copied, so rebuilding never meets a locked file. There, `ms-appx:///` URIs,
+  compiled XAML (`.xbf`) and images resolve as in the user's app. The project's `App.xbf` is left out: WinUI would load
+  it into whichever Application runs. A folder is held by an open lock file; each start removes the folders nobody holds.
+- **Application.** `HostApp` (no App.xaml; started by `Program.Main` with `Application.Start`) implements
+  `IXamlMetadataProvider` over the controls library's provider, its own generated one (found by reflection) and the
+  project's, so `XamlReader` knows every type. It merges `XamlControlsResources` and the `<Application.Resources>` of the
+  project's App.xaml, read from the project folder (`--project`). The project's App class never runs.
+- **Design ids.** `DesignId` is an attached property on a class that isn't a DependencyObject (the XAML compiler would
+  otherwise take its inherited GetValue/SetValue); `TypeInfoAnchor.xaml` makes the compiler generate its type info.
+- **Rendering.** Work runs on the UI thread one piece at a time (`HostApp.InvokeTaskAsync`). The sanitizer turns a
+  `Window` root into a Grid standing for its client area (a Window isn't an element) and removes what runtime XAML
+  can't have: `x:Class`, event attributes, `{x:Bind}`, `x:Load`, `x:Phase`, `x:DataType`, and the `d:` namespace (after
+  reading the design size). The root goes into a Viewbox sized at the requested scale (zoom is crisp; RasterizationScale
+  doesn't change a RenderTargetBitmap's size) inside a Border with the theme's page background, on a canvas in a
+  cloaked, never-activated tool window. After layout it waits for images to decode and reach the screen, then captures
+  with `RenderTargetBitmap`. Layout comes from `TransformToVisual`; Grid offsets include Padding and Row/ColumnSpacing.
+  A Window's root is reported as `Microsoft.UI.Xaml.Window` without panel info; Pages are reported as UserControls.
+- **Metadata and values.** Types deriving from UIElement, plus Window; content models from `[ContentProperty]` and base
+  types; dependency properties (a settable CLR property with a static `{Name}Property`), plain settable properties and
+  attached properties (Grid, Canvas, RelativePanel, VariableSizedWrapGrid, ToolTipService, ScrollViewer); events with
+  `RoutedEvent` fields marked routed. Values come from `ReadLocalValue`/`GetValue`, so the source is Local or Default
+  only. Fonts are read from the registry (WinUI has no font list).
+
 ## 15. App
 
 ### 15.1 Shell
@@ -392,7 +438,8 @@ the app is open.
 
 ### 15.2 Renderer management
 `RenderHostManager`: one host per `HostKey` (framework profile and project assembly; "no project" is one more), the
-profile's exe from `renderhosts\{HostFolder}\`, started on first use, restarted after a
+profile's exe from `renderhosts\{HostFolder}\` (a WinUI host from a fresh shadow folder of the project's output, §14.5),
+started on first use, restarted after a
 crash at most three times a minute (then Retry), restarted after a build that changed the assembly. Requests interrupted
 by a planned restart are sent once more to the new host. `RenderHostConnection` (Core) starts the process, connects,
 handshakes, keeps recent stderr for diagnostics, and kills the process if a shutdown request doesn't end it.
@@ -426,8 +473,10 @@ recommended analyzers and code-style enforcement, and treats warnings as errors 
 self-contained (Windows App SDK included), x64 only. Release publishing (`dotnet publish src/XDesigner.App -c Release`)
 is self-contained and ReadyToRun, and publishes each render host self-contained into `renderhosts\{folder}\`. The
 installer has one component per render host, so users can leave out frameworks they don't design. To keep it lean, the
-app excludes the Windows App SDK's AI, ML, Search and Widgets parts, uses the non-WPF build of
-`Microsoft.VisualStudio.Threading` (its Windows build would pull in all of WPF), and publishes no `.pdb` files.
+app and the WinUI host exclude the Windows App SDK's AI, ML, Search and Widgets parts, use the non-WPF build of
+`Microsoft.VisualStudio.Threading` (its Windows build would pull in all of WPF; `build\VsThreadingWithoutWpf.targets`),
+and nothing publishes `.pdb` files. The WinUI host is built and published for x64 (the app's `RenderHostProject` items
+carry each host's platform).
 `EnableMsixTooling` makes the unpackaged app's resources (`xDesigner.pri`, compiled XAML) part of the publish.
 
 `build\publish.ps1` builds, tests, publishes, checks the output and compiles `installer\xDesigner.iss` (Inno Setup): a
@@ -444,6 +493,9 @@ folder on upgrade, and whose uninstaller removes the install folder, shortcuts, 
   metadata, custom controls, errors, project images, the pipe connection and crash handling).
 - `tests/XDesigner.RenderHost.Avalonia11.Tests`: the same test sources (`AVALONIA11`) against the Avalonia 11 renderer
   and `samples/SampleAvalonia11App`, the same app on Avalonia 11.
+- `tests/XDesigner.RenderHost.WinUI.Tests`: the WinUI renderer over the pipe, started from a shadow folder of
+  `samples/SampleWinUIApp` as the app starts it (a WinUI host can't run inside a test process): windows, pages, the
+  project's controls, App.xaml resources and images, compiled-binding removal, layout, metadata, values, events, fonts.
 - Tests marked `Category=Slow` run `dotnet build` or MSBuild and need the SDK and NuGet packages.
 - The UI is checked by hand in the running app before a release: designing, events and Run on a new project; every
   panel and editor; preview; images; error and hang handling; external edits; install, upgrade and uninstall.

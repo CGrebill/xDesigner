@@ -6,10 +6,11 @@ using StreamJsonRpc;
 namespace XDesigner.Core.Rendering;
 
 /// <summary>How to start a render host process.</summary>
-/// <param name="HostExecutablePath">Path to <c>XDesigner.RenderHost.exe</c>.</param>
+/// <param name="HostExecutablePath">Path to the render host exe.</param>
 /// <param name="UserAssemblyPath">The user's built project assembly, or null for "no project" mode.</param>
 /// <param name="UseUserApplication">False passes <c>--no-user-app</c> (fallback after a setup failure).</param>
-public sealed record RenderHostStartInfo(string HostExecutablePath, string? UserAssemblyPath, bool UseUserApplication = true);
+/// <param name="ProjectDirectory">The project folder (<c>--project</c>; the WinUI host reads App.xaml from it).</param>
+public sealed record RenderHostStartInfo(string HostExecutablePath, string? UserAssemblyPath, bool UseUserApplication = true, string? ProjectDirectory = null);
 
 /// <summary>The host process exited before it could serve requests (e.g. the user's App failed to start).</summary>
 public sealed class RenderHostStartException(string message, int? exitCode, string errorOutput) : Exception(message)
@@ -87,6 +88,12 @@ public sealed class RenderHostConnection : IAsyncDisposable
         {
             psi.ArgumentList.Add("--assembly");
             psi.ArgumentList.Add(startInfo.UserAssemblyPath);
+        }
+
+        if (startInfo.ProjectDirectory is not null)
+        {
+            psi.ArgumentList.Add("--project");
+            psi.ArgumentList.Add(startInfo.ProjectDirectory);
         }
 
         if (!startInfo.UseUserApplication)

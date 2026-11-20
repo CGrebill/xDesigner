@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
 using XDesigner.Core.Project;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -63,11 +64,11 @@ public sealed partial class ShellViewModel
         AppRunner runner;
         try
         {
-            runner = AppRunner.Start(project.ProjectPath, line => RunOnUi(() => AppendRun(line)));
+            runner = await AppRunner.StartAsync(project, line => RunOnUi(() => AppendRun(line)));
         }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or ProjectException or COMException or ArgumentException)
         {
-            AppendRun($"Couldn't start dotnet run: {ex.Message}");
+            AppendRun($"Couldn't start {project.Name}: {ex.Message}");
             RaiseNotify(NotifyKind.Error, $"Couldn't start {project.Name}: {ex.Message}");
             return;
         }
@@ -123,12 +124,13 @@ public sealed partial class ShellViewModel
     }
 
     /// <summary>File ▸ New project: writes the template, opens the project (which builds it) and its main window.</summary>
-    public async Task<string?> CreateProjectAsync(string parentDirectory, string name, string title, Core.Frameworks.FrameworkProfile framework)
+    /// <param name="packaged">WinUI: create a packaged (MSIX) app.</param>
+    public async Task<string?> CreateProjectAsync(string parentDirectory, string name, string title, Core.Frameworks.FrameworkProfile framework, bool packaged = false)
     {
         string projectPath;
         try
         {
-            projectPath = await Task.Run(() => ProjectTemplates.CreateApp(parentDirectory, name, title, framework));
+            projectPath = await Task.Run(() => ProjectTemplates.CreateApp(parentDirectory, name, title, framework, packaged));
         }
         catch (Exception ex) when (ex is ProjectException or IOException or UnauthorizedAccessException)
         {
@@ -146,7 +148,7 @@ public sealed partial class ShellViewModel
             ? Path.GetDirectoryName(doc.FilePath)!
             : Project?.Directory ?? "";
 
-    /// <summary>Project ▸ Add window / user control: creates the files from the template and opens the new one.</summary>
+    /// <summary>Project ▸ Add window / page / user control: creates the files from the project's framework's template and opens the new one.</summary>
     public async Task<string?> AddItemAsync(ItemKind kind, string className, string folder)
     {
         if (Project is not { } project)
@@ -154,10 +156,11 @@ public sealed partial class ShellViewModel
             return "Open a project first.";
         }
 
+        var profile = ProjectProfile;
         string xamlPath;
         try
         {
-            xamlPath = ProjectTemplates.CreateItem(project, folder, className.Trim(), kind);
+            xamlPath = ProjectTemplates.CreateItem(project, folder, className.Trim(), kind, profile);
         }
         catch (Exception ex) when (ex is ProjectException or IOException or UnauthorizedAccessException)
         {
@@ -167,9 +170,13 @@ public sealed partial class ShellViewModel
         AppendLog($"Created {Path.GetRelativePath(project.Directory, xamlPath)} and its code-behind.");
         RefreshProjectFiles();
         await OpenFileAsync(xamlPath);
-        RaiseNotify(NotifyKind.Success, kind == ItemKind.UserControl
-                ? $"Created {className}. Rebuild to use it as a control in your other windows (it will appear under Project in the toolbox)."
-                : $"Created {className}. Open it from code with: new {className}().Show();",
+        var winui = profile?.Family == Core.Frameworks.FrameworkFamily.WinUI;
+        RaiseNotify(NotifyKind.Success, kind switch
+            {
+                ItemKind.UserControl => $"Created {className}. Rebuild to use it as a control in your other windows (it will appear under Project in the toolbox).",
+                ItemKind.Page => $"Created {className}. Show it in a Frame from code with: frame.Navigate(typeof({className}));",
+                _ => $"Created {className}. Open it from code with: new {className}().{(winui ? "Activate" : "Show")}();",
+            },
             kind == ItemKind.UserControl ? [new NotifyAction("Rebuild", () => _ = BuildAsync())] : null);
         return null;
     }

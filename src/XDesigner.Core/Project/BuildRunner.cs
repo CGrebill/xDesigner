@@ -16,17 +16,34 @@ public sealed record BuildResult(bool Succeeded, int ExitCode, IReadOnlyList<Bui
     public IEnumerable<BuildDiagnostic> Errors => Diagnostics.Where(d => d.IsError);
 
     public IEnumerable<BuildDiagnostic> Warnings => Diagnostics.Where(d => !d.IsError);
+
+    /// <summary>Several builds (a solution built project by project) as one result.</summary>
+    public static BuildResult Combine(IReadOnlyList<BuildResult> results) => new(
+        results.All(r => r.Succeeded),
+        results.FirstOrDefault(r => r.ExitCode != 0)?.ExitCode ?? 0,
+        results.SelectMany(r => r.Diagnostics).Distinct().ToList(),
+        TimeSpan.FromTicks(results.Sum(r => r.Duration.Ticks)));
 }
+
+/// <summary>One <c>dotnet build</c>: a solution or project, and the platform it needs (<c>x64</c> for WinUI), if any.</summary>
+public sealed record BuildStep(string Path, string? Platform);
 
 /// <summary><c>dotnet build</c> of the open project, with output streamed to the Build tab and diagnostics parsed (§11.2).</summary>
 public static partial class BuildRunner
 {
-    public static async Task<BuildResult> BuildAsync(string projectPath, Action<string>? onLine = null, CancellationToken cancellationToken = default)
+    /// <param name="platform">Passed as <c>-p:Platform</c> (WinUI projects have no AnyCPU build).</param>
+    public static async Task<BuildResult> BuildAsync(string projectPath, Action<string>? onLine = null, string? platform = null, CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
+        List<string> args = ["build", projectPath, "-c", "Debug", "-nologo", "-v:minimal", "-tl:off", "-p:GenerateFullPaths=true"];
+        if (platform is not null)
+        {
+            args.Add($"-p:Platform={platform}");
+        }
+
         var result = await ProcessRunner.RunAsync(
             "dotnet",
-            ["build", projectPath, "-c", "Debug", "-nologo", "-v:minimal", "-tl:off", "-p:GenerateFullPaths=true"],
+            args,
             Path.GetDirectoryName(Path.GetFullPath(projectPath))!,
             onLine,
             cancellationToken).ConfigureAwait(false);

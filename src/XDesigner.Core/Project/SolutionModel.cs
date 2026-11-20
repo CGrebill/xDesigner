@@ -38,6 +38,15 @@ public sealed class SolutionModel
     /// <summary>What Build builds: the whole solution, or the single project.</summary>
     public string BuildTarget => SolutionPath ?? Projects[0].Info.ProjectPath;
 
+    /// <summary>
+    /// What Build runs: <see cref="BuildTarget"/>, or each project on its own when one needs a platform (WinUI has no AnyCPU
+    /// build, and a solution's platforms rarely map it), each WinUI project with its platform.
+    /// </summary>
+    public IReadOnlyList<BuildStep> BuildSteps =>
+        SolutionPath is not null && Projects.Any(p => p.Info.Platform is not null)
+            ? Projects.Select(p => new BuildStep(p.Info.ProjectPath, p.Info.Platform)).ToList()
+            : [new BuildStep(BuildTarget, SolutionPath is null ? Projects[0].Info.Platform : null)];
+
     public IEnumerable<SolutionProject> DesignableProjects => Projects.Where(p => p.IsDesignable);
 
     /// <summary>The project Run starts when the user hasn't chosen: the first designable app, else the first designable project.</summary>

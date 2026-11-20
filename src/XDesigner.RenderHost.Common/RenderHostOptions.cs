@@ -4,18 +4,21 @@ using XDesigner.Protocol.Rendering;
 namespace XDesigner.RenderHost;
 
 /// <summary>
-/// Command-line options for the render host. See docs/ARCHITECTURE.md §14.1.
+/// Command-line options shared by every render host. See docs/ARCHITECTURE.md §14.1.
 /// <code>
-/// Server mode:  --pipe {name} [--assembly {userTargetPath}] [--parent-pid {pid}] [--no-user-app]
-/// Render once:  --render {file.axaml} --out {file.png} [--assembly {path}] [--scale 1.5] [--theme Light|Dark] [--size 800x600] [--no-user-app]
+/// Server mode:  --pipe {name} [--assembly {userTargetPath}] [--project {projectDir}] [--parent-pid {pid}] [--no-user-app]
+/// Render once:  --render {file.axaml} --out {file.png} [--assembly {path}] [--project {dir}] [--scale 1.5] [--theme Light|Dark] [--size 800x600] [--no-user-app]
 /// Version:      --version
 /// </code>
 /// </summary>
-internal sealed record RenderHostOptions
+public sealed record RenderHostOptions
 {
     public string? PipeName { get; init; }
 
     public string? UserAssemblyPath { get; init; }
+
+    /// <summary>The user project's folder (the WinUI host reads the project's App.xaml resources from it).</summary>
+    public string? ProjectDirectory { get; init; }
 
     public int? ParentProcessId { get; init; }
 
@@ -45,6 +48,7 @@ internal sealed record RenderHostOptions
             {
                 "--pipe" => options with { PipeName = RequireValue(args, ref i) },
                 "--assembly" => options with { UserAssemblyPath = RequireValue(args, ref i) },
+                "--project" => options with { ProjectDirectory = RequireValue(args, ref i) },
                 "--parent-pid" => options with { ParentProcessId = ParsePositiveInt(args[i], RequireValue(args, ref i)) },
                 "--version" => options with { ShowVersion = true },
                 "--no-user-app" => options with { NoUserApp = true },

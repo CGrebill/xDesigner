@@ -60,7 +60,7 @@ public sealed partial class ShellViewModel : ObservableObject
         }
 
         RendererStatus = _hosts.TryGetRunning(doc.HostKey) is { } host
-            ? $"{doc.Xaml.Profile.Family} {host.Info.FrameworkVersion}"
+            ? doc.Xaml.Profile.DescribeVersion(host.Info.FrameworkVersion)
             : $"{doc.Xaml.Profile.DisplayName} (starting)";
     }
 

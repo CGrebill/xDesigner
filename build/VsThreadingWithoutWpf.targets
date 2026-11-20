@@ -1,0 +1,34 @@
+<Project>
+  <!--
+    For Windows-targeted projects that reference StreamJsonRpc (the app and the WinUI render host).
+
+    Microsoft.VisualStudio.Threading (via StreamJsonRpc) declares a WPF framework reference for Windows targets, which
+    made a self-contained publish carry all of WPF (~60 MB). Nothing here uses any of it, so the importing project sets
+    DisableTransitiveFrameworkReferences, and this target swaps in the library's plain net8.0 build: the same library
+    minus a few WPF dispatcher helpers, which can't resolve its WPF references otherwise.
+  -->
+  <PropertyGroup>
+    <DisableTransitiveFrameworkReferences>true</DisableTransitiveFrameworkReferences>
+  </PropertyGroup>
+
+  <Target Name="UseVsThreadingWithoutWpf" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <_VsThreadingCompile Include="@(ResolvedCompileFileDefinitions)" Condition="'%(ResolvedCompileFileDefinitions.NuGetPackageId)' == 'Microsoft.VisualStudio.Threading.Only'" />
+      <_VsThreadingRuntime Include="@(RuntimeCopyLocalItems)" Condition="'%(RuntimeCopyLocalItems.NuGetPackageId)' == 'Microsoft.VisualStudio.Threading.Only'" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_VsThreadingWindowsDll>@(_VsThreadingRuntime)</_VsThreadingWindowsDll>
+      <_VsThreadingDll>$(_VsThreadingWindowsDll.Replace('net8.0-windows7.0', 'net8.0'))</_VsThreadingDll>
+      <_VsThreadingVersion>@(_VsThreadingRuntime->'%(NuGetPackageVersion)')</_VsThreadingVersion>
+    </PropertyGroup>
+    <Error Condition="'$(_VsThreadingDll)' != '' And !Exists('$(_VsThreadingDll)')" Text="Expected $(_VsThreadingDll) (the non-Windows build of Microsoft.VisualStudio.Threading)." />
+    <ItemGroup Condition="'$(_VsThreadingDll)' != ''">
+      <ResolvedCompileFileDefinitions Remove="@(_VsThreadingCompile)" />
+      <ResolvedCompileFileDefinitions Include="$(_VsThreadingDll)" HintPath="$(_VsThreadingDll)" Private="false" ExternallyResolved="true"
+                                      NuGetPackageId="Microsoft.VisualStudio.Threading.Only" NuGetPackageVersion="$(_VsThreadingVersion)" NuGetSourceType="Package" />
+      <RuntimeCopyLocalItems Remove="@(_VsThreadingRuntime)" />
+      <RuntimeCopyLocalItems Include="$(_VsThreadingDll)" AssetType="runtime" CopyLocal="true" DestinationSubPath="Microsoft.VisualStudio.Threading.dll"
+                             NuGetPackageId="Microsoft.VisualStudio.Threading.Only" NuGetPackageVersion="$(_VsThreadingVersion)" />
+    </ItemGroup>
+  </Target>
+</Project>

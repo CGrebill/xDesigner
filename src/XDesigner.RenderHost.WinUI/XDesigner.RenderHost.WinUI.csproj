@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The WinUI 3 render host (§14). It renders in a cloaked window of its own, and runs from a shadow folder: a copy of
+    the user's build output with this host's files on top (prepared by the app, §14.5), so ms-appx:/// URIs, compiled
+    XAML (.xbf) and the user's custom controls resolve as they do in the user's app.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <AssemblyName>XDesigner.RenderHost.WinUI</AssemblyName>
+    <RootNamespace>XDesigner.RenderHost</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <Platform>x64</Platform>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- LibraryImport (the window styles) generates pointer code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Program.Main starts the Application itself (there is no App.xaml). -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <Description>Out-of-process WinUI 3 renderer for the designer. One instance per open project.</Description>
+  </PropertyGroup>
+
+  <!-- Reported in the handshake (HostInfo.FrameworkVersion). -->
+  <ItemGroup>
+    <AssemblyMetadata Include="WindowsAppSdkVersion" Value="$(WindowsAppSdkVersion)" />
+  </ItemGroup>
+
+  <Import Project="..\..\build\VsThreadingWithoutWpf.targets" />
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <!-- Not used: keeps the AI, machine learning, Search and Widgets parts out of the host (as in the app). -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.AI" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.ML" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Search" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Widgets" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.Windows.AI.MachineLearning" ExcludeAssets="all" />
+    <PackageReference Include="StreamJsonRpc" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\XDesigner.Protocol\XDesigner.Protocol.csproj" />
+    <ProjectReference Include="..\XDesigner.RenderHost.Common\XDesigner.RenderHost.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="XDesigner.RenderHost.WinUI.Tests" />
+  </ItemGroup>
+
+</Project>

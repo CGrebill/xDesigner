@@ -23,6 +23,9 @@
   <Folder Name="/samples/">
     <Project Path="samples/SampleAvaloniaApp/SampleAvaloniaApp.csproj" />
     <Project Path="samples/SampleAvalonia11App/SampleAvalonia11App.csproj" />
+    <Project Path="samples/SampleWinUIApp/SampleWinUIApp.csproj">
+      <Platform Project="x64" />
+    </Project>
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/XDesigner.App/XDesigner.App.csproj">
@@ -31,12 +34,17 @@
     </Project>
     <Project Path="src/XDesigner.Core/XDesigner.Core.csproj" />
     <Project Path="src/XDesigner.Protocol/XDesigner.Protocol.csproj" />
+    <Project Path="src/XDesigner.RenderHost.Common/XDesigner.RenderHost.Common.csproj" />
     <Project Path="src/XDesigner.RenderHost.Avalonia/XDesigner.RenderHost.Avalonia12.csproj" />
     <Project Path="src/XDesigner.RenderHost.Avalonia11/XDesigner.RenderHost.Avalonia11.csproj" />
+    <Project Path="src/XDesigner.RenderHost.WinUI/XDesigner.RenderHost.WinUI.csproj">
+      <Platform Project="x64" />
+    </Project>
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/XDesigner.Core.Tests/XDesigner.Core.Tests.csproj" />
     <Project Path="tests/XDesigner.RenderHost.Tests/XDesigner.RenderHost.Tests.csproj" />
     <Project Path="tests/XDesigner.RenderHost.Avalonia11.Tests/XDesigner.RenderHost.Avalonia11.Tests.csproj" />
+    <Project Path="tests/XDesigner.RenderHost.WinUI.Tests/XDesigner.RenderHost.WinUI.Tests.csproj" />
   </Folder>
 </Solution>

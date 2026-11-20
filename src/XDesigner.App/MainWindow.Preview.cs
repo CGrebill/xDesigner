@@ -145,7 +145,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        var isWindow = doc.Frame?.RootKind == RootKind.Window;
+        var isWindow = doc.Frame?.RootKind == RootKind.Window && doc.Xaml.Profile.WindowSizeInXaml;
         doc.Actions.SetDesignSize(size.Width, size.Height, isWindow);
         doc.PreviewSize = null;
         ShowNotification(NotifyKind.Success, isWindow

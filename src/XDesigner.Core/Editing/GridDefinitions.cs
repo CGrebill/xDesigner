@@ -143,7 +143,8 @@ public sealed partial class DesignerActions
 {
     /// <summary>
     /// Replaces a Grid's rows and columns (§9.5) as one undo step. Written as the compact attribute
-    /// (<c>RowDefinitions="Auto,*,40"</c>) unless a Min/Max is used, then as <c>&lt;Grid.RowDefinitions&gt;</c> elements.
+    /// (<c>RowDefinitions="Auto,*,40"</c>) unless a Min/Max is used or the framework has no compact form (WinUI), then as
+    /// <c>&lt;Grid.RowDefinitions&gt;</c> elements.
     /// Children keep their row/column; children of a deleted one move to the nearest earlier one, and spans are clamped.
     /// </summary>
     public bool SetGridDefinitions(int gridId, IReadOnlyList<GridDefinition> rows, IReadOnlyList<GridDefinition> columns)
@@ -163,14 +164,14 @@ public sealed partial class DesignerActions
                 continue; // this axis is unchanged
             }
 
-            commands.AddRange(WriteDefinitions(grid, isRows, edited));
+            commands.AddRange(WriteDefinitions(grid, isRows, edited, _document.Profile.CompactGridDefinitions));
             commands.AddRange(RemapChildren(grid, isRows, edited));
         }
 
         return Execute($"Edit rows and columns of {grid.DisplayName}", commands);
     }
 
-    private static List<IUndoableCommand> WriteDefinitions(ElementNode grid, bool rows, IReadOnlyList<GridDefinition> edited)
+    private static List<IUndoableCommand> WriteDefinitions(ElementNode grid, bool rows, IReadOnlyList<GridDefinition> edited, bool compactAllowed)
     {
         var axis = rows ? "Row" : "Column";
         var size = rows ? "Height" : "Width";
@@ -182,7 +183,7 @@ public sealed partial class DesignerActions
             commands.Add(new RemoveElementCommand(grid.Id, propertyElement.Name, $"Edit {axis.ToLowerInvariant()}s"));
         }
 
-        if (edited.Any(d => d.Min is not null || d.Max is not null))
+        if (edited.Count > 0 && (!compactAllowed || edited.Any(d => d.Min is not null || d.Max is not null)))
         {
             if (grid.Element.Attribute(attribute) is not null)
             {

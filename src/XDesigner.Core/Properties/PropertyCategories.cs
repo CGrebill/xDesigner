@@ -24,20 +24,28 @@ public static class PropertyCategories
     private static readonly (string Category, string[] Keys)[] Map =
     [
         (Common, ["Content", "Text", "Header", "Title", "IsChecked", "Value", "Minimum", "Maximum", "SelectedIndex", "PlaceholderText",
-            "Watermark", "Source", "IsEnabled", "IsVisible", "ToolTip.Tip", "Tag"]),
+            "Watermark", "Source", "IsEnabled", "IsVisible", "ToolTip.Tip", "Tag",
+            // WinUI
+            "IsOn", "OnContent", "OffContent", "Glyph", "IsOpen", "Message", "Severity", "Visibility", "ToolTipService.ToolTip", "Description"]),
         (Layout, ["Width", "Height", "Grid.Row", "Grid.Column", "Grid.RowSpan", "Grid.ColumnSpan", "Canvas.Left", "Canvas.Top",
             "Canvas.Right", "Canvas.Bottom", "DockPanel.Dock", "Margin", "Padding", "HorizontalAlignment", "VerticalAlignment",
             "HorizontalContentAlignment", "VerticalContentAlignment", "MinWidth", "MinHeight", "MaxWidth", "MaxHeight", "Orientation",
             "Spacing", "RowDefinitions", "ColumnDefinitions", "RowSpacing", "ColumnSpacing", "LastChildFill", "Rows", "Columns",
-            "ItemWidth", "ItemHeight", "Stretch", "StretchDirection", "ZIndex", "ClipToBounds"]),
+            "ItemWidth", "ItemHeight", "Stretch", "StretchDirection", "ZIndex", "ClipToBounds",
+            // WinUI
+            "Canvas.ZIndex", "MaximumRowsOrColumns", "SpinButtonPlacementMode"]),
         (Appearance, ["Background", "Foreground", "BorderBrush", "BorderThickness", "CornerRadius", "Opacity", "Fill", "Stroke",
             "StrokeThickness", "BoxShadow", "BackgroundSizing", "CaretBrush", "SelectionBrush", "SelectionForegroundBrush",
             "PlaceholderForeground", "WatermarkForeground"]),
         (Text, ["FontFamily", "FontSize", "FontWeight", "FontStyle", "FontStretch", "TextAlignment", "TextWrapping", "TextTrimming",
-            "LineHeight", "LetterSpacing", "MaxLines", "MinLines", "PasswordChar", "TextDecorations"]),
+            "LineHeight", "LetterSpacing", "MaxLines", "MinLines", "PasswordChar", "TextDecorations",
+            // WinUI
+            "CharacterSpacing", "IsTextSelectionEnabled", "PasswordRevealMode", "TextLineBounds", "OpticalMarginAlignment"]),
         (Window, ["Icon", "WindowStartupLocation", "SizeToContent", "CanResize", "CanMinimize", "CanMaximize", "WindowState",
             "SystemDecorations", "WindowDecorations", "Topmost", "ShowInTaskbar", "ShowActivated", "ExtendClientAreaToDecorationsHint",
-            "ExtendClientAreaTitleBarHeightHint", "ClosingBehavior"]),
+            "ExtendClientAreaTitleBarHeightHint", "ClosingBehavior",
+            // WinUI
+            "ExtendsContentIntoTitleBar"]),
         (Behavior, ["IsReadOnly", "AcceptsReturn", "AcceptsTab", "MaxLength", "IsThreeState", "ClickMode", "IsDefault", "IsCancel",
             "HotKey", "SelectionMode", "IsHitTestVisible", "Focusable", "IsTabStop", "TabIndex", "Cursor", "IsUndoEnabled",
             "RevealPassword", "UseFloatingPlaceholder", "IsSnapToTickEnabled", "TickFrequency", "Increment"]),
@@ -55,13 +63,22 @@ public static class PropertyCategories
         "AutoSafeAreaPadding", "WindowDecorationsTheme", "SelectionStart", "SelectionEnd", "SelectedText", "CaretIndex",
         "CaretBlinkInterval", "ClearSelectionOnLostFocus", "IsInactiveSelectionHighlightEnabled", "UndoLimit", "NewLine",
         "UseFloatingWatermark", "InnerLeftContent", "InnerRightContent",
+
+        // WinUI: composition, focus and input plumbing.
+        "RequestedTheme", "ElementSoundMode", "XamlRoot", "KeyboardAccelerators", "KeyboardAcceleratorPlacementMode",
+        "KeyboardAcceleratorPlacementTarget", "Shadow", "Translation", "Rotation", "Scale", "CenterPoint", "TransformMatrix", "RotationAxis",
+        "Transform3D", "Projection", "Lights", "TabFocusNavigation", "UseSystemFocusVisuals", "HighContrastAdjustment",
+        "ProtectedCursor", "IsAccessKeyScope", "AccessKeyScopeOwner", "ExitDisplayModeOnAccessKeyInvoked", "BackgroundTransition",
+        "CanBeScrollAnchor", "CanDrag", "AllowDrop", "ManipulationMode", "IsDoubleTapEnabled", "IsRightTapEnabled", "IsTapEnabled",
+        "AllowFocusOnInteraction", "AllowFocusWhenDisabled", "IsTextScaleFactorEnabled", "Triggers", "Style", "DefaultStyleKey",
+        "DefaultStyleResourceUri",
     };
 
     private static readonly Dictionary<string, (string Category, int Order)> ByKey = Build();
 
     public static string CategoryOf(string key) =>
         ByKey.TryGetValue(key, out var entry) ? entry.Category
-        : key.StartsWith("ToolTip.", StringComparison.Ordinal) ? Behavior
+        : key.StartsWith("ToolTip.", StringComparison.Ordinal) || key.StartsWith("ToolTipService.", StringComparison.Ordinal) ? Behavior
         : key.StartsWith("ScrollViewer.", StringComparison.Ordinal) ? Behavior
         : Misc;
 
@@ -73,7 +90,11 @@ public static class PropertyCategories
         || AdvancedKeys.Contains(key)
         || key.EndsWith("Template", StringComparison.Ordinal)
         || key.StartsWith("ScrollViewer.", StringComparison.Ordinal)
-        || (key.StartsWith("ToolTip.", StringComparison.Ordinal) && key != "ToolTip.Tip");
+        || (key.StartsWith("ToolTip.", StringComparison.Ordinal) && key != "ToolTip.Tip")
+        || (key.StartsWith("ToolTipService.", StringComparison.Ordinal) && key != "ToolTipService.ToolTip")
+        || key.EndsWith("Transitions", StringComparison.Ordinal)
+        || key.StartsWith("XYFocus", StringComparison.Ordinal) || key.StartsWith("FocusVisual", StringComparison.Ordinal)
+        || key.StartsWith("AccessKey", StringComparison.Ordinal) || key.StartsWith("KeyTip", StringComparison.Ordinal);
 
     /// <summary>
     /// Whether an attached property applies to a child of <paramref name="parent"/>: <c>Grid.*</c> only inside a Grid,

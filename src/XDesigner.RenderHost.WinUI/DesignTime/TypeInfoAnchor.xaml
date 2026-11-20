@@ -1,0 +1,9 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:dsn="using:XDesigner.RenderHost.DesignTime">
+  <!--
+    Never loaded. Using dsn:DesignId.Value here makes the XAML compiler generate type information for it, which is how
+    XamlReader finds the attached property at run time (through this assembly's generated IXamlMetadataProvider).
+  -->
+  <Border x:Key="Anchor" dsn:DesignId.Value="0" />
+</ResourceDictionary>

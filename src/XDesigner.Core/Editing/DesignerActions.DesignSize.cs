@@ -10,12 +10,13 @@ public sealed partial class DesignerActions
 {
     /// <summary>
     /// Makes <paramref name="width"/> × <paramref name="height"/> the document's own size. A Window gets <c>Width</c>/
-    /// <c>Height</c> (the size it opens at); anything else gets <c>d:DesignWidth</c>/<c>d:DesignHeight</c>, which only the
+    /// <c>Height</c> (the size it opens at) where its XAML can set them (<see cref="Frameworks.FrameworkProfile.WindowSizeInXaml"/>); anything else gets <c>d:DesignWidth</c>/<c>d:DesignHeight</c>, which only the
     /// designer uses, declaring <c>xmlns:d</c>, <c>xmlns:mc</c> and <c>mc:Ignorable="d"</c> when the file lacks them.
     /// One undo step; false when nothing changed.
     /// </summary>
     public bool SetDesignSize(double width, double height, bool isWindow)
     {
+        isWindow &= _document.Profile.WindowSizeInXaml;
         var root = _document.Root;
         var w = XamlValueText.Double(Math.Round(width));
         var h = XamlValueText.Double(Math.Round(height));

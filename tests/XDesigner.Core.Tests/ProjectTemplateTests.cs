@@ -131,6 +131,48 @@ public sealed class ProjectTemplateTests : IDisposable
         Assert.Equal(profile, Core.Frameworks.FrameworkDetector.FromProjectFile(project).Profile); // before a build too
     }
 
+
+    /// <summary>A new WinUI project, unpackaged or packaged, builds as created and reads back as such. Needs the SDK and the Windows App SDK package.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "Slow")]
+    public async Task CreatedWinUIApp_Builds(bool packaged)
+    {
+        var profile = Core.Frameworks.FrameworkProfile.WinUI3;
+        var project = ProjectTemplates.CreateApp(_dir, "HelloWinUI", "Hello {WinUI} & co", profile, packaged);
+        var info = await ProjectReader.ReadAsync(project, TestContext.Current.CancellationToken);
+        var page = ProjectTemplates.CreateItem(info, Path.Combine(info.Directory, "Pages"), "SettingsPage", ItemKind.Page, profile);
+        ProjectTemplates.CreateItem(info, Path.Combine(info.Directory, "Controls"), "Card", ItemKind.UserControl, profile);
+
+        var result = await BuildRunner.BuildAsync(project, platform: info.Platform, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.Succeeded, string.Join(Environment.NewLine, result.Errors));
+        Assert.Equal((ProjectReader.NativePlatform, packaged), (info.Platform, info.IsPackaged));
+        Assert.True(File.Exists(info.TargetPath), info.TargetPath);
+        Assert.Equal(packaged, File.Exists(Path.Combine(Path.GetDirectoryName(info.TargetPath)!, "AppxManifest.xml")));
+        Assert.EndsWith(Path.Combine("Pages", "SettingsPage.xaml"), page);
+        Assert.Contains("x:Class=\"HelloWinUI.Pages.SettingsPage\"", File.ReadAllText(page));
+        Assert.Equal(profile, info.DetectFramework().Profile);
+        Assert.Contains("Title=\"Hello {WinUI} &amp; co\"", File.ReadAllText(Path.Combine(info.Directory, "MainWindow.xaml")));
+    }
+
+    [Fact]
+    public void WinUIItems_AreXamlFiles_AndPagesAreWinUIOnly()
+    {
+        var info = new ProjectInfo(Path.Combine(_dir, "App.csproj"), "App", "App", "Shop.App", "", "net10.0-windows10.0.19041.0", "WinExe");
+        var winui = Core.Frameworks.FrameworkProfile.WinUI3;
+
+        var window = ProjectTemplates.CreateItem(info, _dir, "AboutWindow", ItemKind.Window, winui);
+
+        Assert.EndsWith("AboutWindow.xaml", window);
+        Assert.True(File.Exists(window + ".cs"));
+        Assert.Contains("already exists", ProjectTemplates.ValidateItemName(_dir, "AboutWindow", winui));
+        Assert.Throws<ProjectException>(() => ProjectTemplates.CreateItem(info, _dir, "Start", ItemKind.Page));
+        Assert.Equal("My-App.Tools", ProjectTemplates.PackageName("My_App.Tools"));
+        Assert.Equal("ABApp", ProjectTemplates.PackageName("AB"));
+        Assert.Equal([0x89, (byte)'P', (byte)'N', (byte)'G'], ProjectTemplates.SolidPng(4, 1, 2, 3)[..4]);
+    }
     [Fact]
     public void TemplateVersions_MatchTheRenderHostsPackages()
     {
@@ -139,6 +181,7 @@ public sealed class ProjectTemplateTests : IDisposable
 
         Assert.Equal(Property("AvaloniaVersion"), Core.Frameworks.FrameworkProfile.Avalonia12.TemplateVersion);
         Assert.Equal(Property("Avalonia11Version"), Core.Frameworks.FrameworkProfile.Avalonia11.TemplateVersion);
+        Assert.Equal(Property("WindowsAppSdkVersion"), Core.Frameworks.FrameworkProfile.WinUI3.TemplateVersion);
     }
 
     private static string RepoRoot()

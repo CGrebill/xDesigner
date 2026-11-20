@@ -36,6 +36,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\XDesigner.Protocol\XDesigner.Protocol.csproj" />
+    <ProjectReference Include="..\XDesigner.RenderHost.Common\XDesigner.RenderHost.Common.csproj" />
   </ItemGroup>
 
   <ItemGroup>

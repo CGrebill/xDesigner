@@ -86,6 +86,12 @@ public sealed record FrameworkProfile
     /// <summary>The render host's executable name.</summary>
     public required string HostExecutable { get; init; }
 
+    /// <summary>
+    /// The host runs from a shadow folder of the project's build output (WinUI, §14.5): its XAML and resources resolve
+    /// against the folder the host runs from, as in the user's app.
+    /// </summary>
+    public bool HostRunsFromProjectOutput { get; init; }
+
     /// <summary>MSBuild item that packages project images (<c>AvaloniaResource</c>), or null where images need none.</summary>
     public required string? ResourceItemName { get; init; }
 
@@ -110,6 +116,12 @@ public sealed record FrameworkProfile
     /// <summary>Base types of things that can't be placed inside a form (windows, pages, popups).</summary>
     public required IReadOnlyList<string> TopLevelTypes { get; init; }
 
+    /// <summary>A Window's XAML sets the size it opens at (<c>Width</c>/<c>Height</c>); WinUI's can't, so it gets <c>d:DesignWidth</c>.</summary>
+    public bool WindowSizeInXaml { get; init; } = true;
+
+    /// <summary>The framework's tab control, its tab type and the property holding the tabs (§9.4); null where it has none.</summary>
+    public TabsInfo? Tabs { get; init; }
+
     /// <summary>The full CLR name of a built-in control: <c>Grid</c> → <c>Avalonia.Controls.Grid</c>.</summary>
     public string BuiltIn(string name) => $"{ControlsNamespace}.{name}";
 
@@ -117,6 +129,13 @@ public sealed record FrameworkProfile
     public string CodeBehindExtension => FileExtension + ".cs";
 
     public override string ToString() => DisplayName;
+
+    /// <summary>
+    /// How a renderer's exact framework version reads (§15.1): <c>Avalonia 12.1.6</c>; for WinUI, whose version is that of
+    /// the Windows App SDK, <c>WinUI 3, Windows App SDK 2.7.0</c>.
+    /// </summary>
+    public string DescribeVersion(string frameworkVersion) =>
+        Family == FrameworkFamily.WinUI ? $"{DisplayName}, Windows App SDK {frameworkVersion}" : $"{Family} {frameworkVersion}";
 
     public static readonly FrameworkProfile Avalonia12 = new()
     {
@@ -141,6 +160,7 @@ public sealed record FrameworkProfile
         CompactGridDefinitions = true,
         HiddenAttribute = ("IsVisible", "False"),
         TopLevelTypes = ["Avalonia.Controls.TopLevel", "Avalonia.Controls.Primitives.PopupRoot", "Avalonia.Controls.Primitives.OverlayPopupHost"],
+        Tabs = new("TabControl", "TabItem", "Items"),
     };
 
     public static readonly FrameworkProfile Avalonia11 = Avalonia12 with
@@ -159,7 +179,7 @@ public sealed record FrameworkProfile
         Family = FrameworkFamily.WinUI,
         DisplayName = "WinUI 3",
         MajorVersion = 3,
-        IsSupported = false,
+        IsSupported = true,
         DefaultNamespace = WinUINamespace,
         XamlNamespace = Xaml2006Namespace,
         DesignNamespace = BlendDesignNamespace,
@@ -168,13 +188,17 @@ public sealed record FrameworkProfile
         ControlsNamespace = "Microsoft.UI.Xaml.Controls",
         HostFolder = "winui3",
         HostExecutable = "XDesigner.RenderHost.WinUI.exe",
+        HostRunsFromProjectOutput = true,
         ResourceItemName = "Content",
         ResourceUriScheme = "ms-appx",
         ToolboxResource = "toolbox.winui.json",
-        ProjectTemplate = null,
+        ProjectTemplate = "WinUIApp",
+        TemplateVersion = "2.7.0", // = WindowsAppSdkVersion in Directory.Packages.props
         CompactGridDefinitions = false,
         HiddenAttribute = ("Visibility", "Collapsed"),
-        TopLevelTypes = ["Microsoft.UI.Xaml.Controls.Page", "Microsoft.UI.Xaml.Controls.Primitives.Popup"],
+        TopLevelTypes = ["Microsoft.UI.Xaml.Window", "Microsoft.UI.Xaml.Controls.Page", "Microsoft.UI.Xaml.Controls.Primitives.Popup"],
+        Tabs = new("TabView", "TabViewItem", "TabItems"),
+        WindowSizeInXaml = false,
     };
 
     public static readonly FrameworkProfile Maui10 = new()
@@ -240,3 +264,9 @@ public sealed record FrameworkProfile
     /// <summary>Whether <paramref name="ns"/> is one of the design-time namespaces.</summary>
     public static bool IsDesign(XNamespace ns) => ns.NamespaceName is BlendDesignNamespace or MauiDesignNamespace;
 }
+
+/// <summary>A framework's tab control (§9.4).</summary>
+/// <param name="Control">The tab control's name (<c>TabControl</c>, <c>TabView</c>).</param>
+/// <param name="Item">A tab's element name (<c>TabItem</c>, <c>TabViewItem</c>).</param>
+/// <param name="ItemsProperty">The property holding the tabs (<c>Items</c>, <c>TabItems</c>); it is the content property.</param>
+public sealed record TabsInfo(string Control, string Item, string ItemsProperty);

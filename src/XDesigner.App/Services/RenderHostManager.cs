@@ -8,7 +8,8 @@ using XDesigner.Protocol.Metadata;
 namespace XDesigner.App.Services;
 
 /// <summary>Which render host a document needs: its framework version, and the project assembly to load (if any).</summary>
-public readonly record struct HostKey(FrameworkProfile Profile, string? AssemblyPath)
+/// <param name="ProjectDirectory">The project's folder (the WinUI host reads App.xaml there); not part of the identity.</param>
+public readonly record struct HostKey(FrameworkProfile Profile, string? AssemblyPath, string? ProjectDirectory = null)
 {
     internal string Id => $"{Profile.Id}|{AssemblyPath}";
 
@@ -34,12 +35,29 @@ public sealed class RenderHostManager : IAsyncDisposable
     private readonly ConditionalWeakTable<RenderHostConnection, ConcurrentDictionary<string, Task<PropertyInfoDto[]>>> _properties = new();
     private readonly ConditionalWeakTable<RenderHostConnection, ConcurrentDictionary<string, Task<EventInfoDto[]>>> _events = new();
     private readonly ConditionalWeakTable<RenderHostConnection, Task<string[]>> _fonts = new();
+    private readonly Dictionary<string, ShadowHostFolder> _shadows = new(StringComparer.OrdinalIgnoreCase);
+    private readonly string _shadowRoot;
     private bool _disposed;
 
     /// <param name="hostsDirectory">The folder holding one subfolder per render host (<c>renderhosts</c>).</param>
-    public RenderHostManager(string hostsDirectory)
+    /// <param name="shadowRoot">Where shadow folders for WinUI hosts go (§14.5); <see cref="ShadowHostFolder.DefaultRoot"/> by default.</param>
+    public RenderHostManager(string hostsDirectory, string? shadowRoot = null)
     {
         _hostsDirectory = hostsDirectory;
+        _shadowRoot = shadowRoot ?? ShadowHostFolder.DefaultRoot;
+
+        // Folders left by a designer that was ended (or crashed) with a WinUI renderer running.
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                ShadowHostFolder.RemoveUnused(_shadowRoot);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Tried again when a WinUI renderer starts.
+            }
+        });
     }
 
     /// <summary>Default location: <c>renderhosts\</c> next to the app (see the CopyRenderHosts build target).</summary>
@@ -241,6 +259,40 @@ public sealed class RenderHostManager : IAsyncDisposable
                 // Failed starts have nothing to dispose.
             }
         }
+
+        List<ShadowHostFolder> shadows;
+        lock (_lock)
+        {
+            shadows = [.. _shadows.Values];
+            _shadows.Clear();
+        }
+
+        shadows.ForEach(s => s.Dispose());
+    }
+
+    /// <summary>
+    /// Where to start the host for <paramref name="key"/>: its installed exe, or for a framework whose host runs from the
+    /// project's output (WinUI), a fresh shadow folder of that output (replacing the key's previous one).
+    /// </summary>
+    private async Task<(string Executable, string? AssemblyPath)> PrepareHostAsync(HostKey key)
+    {
+        var executable = ExecutableFor(key.Profile);
+        if (!key.Profile.HostRunsFromProjectOutput || key.AssemblyPath is null)
+        {
+            return (executable, key.AssemblyPath);
+        }
+
+        var shadow = await Task.Run(() => ShadowHostFolder.Prepare(
+            Path.GetDirectoryName(executable)!, Path.GetDirectoryName(key.AssemblyPath)!, _shadowRoot)).ConfigureAwait(false);
+        ShadowHostFolder? previous;
+        lock (_lock)
+        {
+            _shadows.Remove(key.Id, out previous);
+            _shadows[key.Id] = shadow;
+        }
+
+        previous?.Dispose();
+        return (Path.Combine(shadow.Path, key.Profile.HostExecutable), Path.Combine(shadow.Path, Path.GetFileName(key.AssemblyPath)));
     }
 
     private static bool IsDead(Task<RenderHostConnection> task) =>
@@ -271,19 +323,19 @@ public sealed class RenderHostManager : IAsyncDisposable
     private async Task<RenderHostConnection> StartAsync(HostKey key)
     {
         Log?.Invoke($"Starting renderer ({key})…");
-        var executable = ExecutableFor(key.Profile);
+        var (executable, assemblyPath) = await PrepareHostAsync(key).ConfigureAwait(false);
 
         RenderHostConnection connection;
         try
         {
-            connection = await RenderHostConnection.StartAsync(new RenderHostStartInfo(executable, key.AssemblyPath)).ConfigureAwait(false);
+            connection = await RenderHostConnection.StartAsync(new RenderHostStartInfo(executable, assemblyPath, ProjectDirectory: key.ProjectDirectory)).ConfigureAwait(false);
         }
         catch (RenderHostStartException ex) when (ex.IsSetupFailure && key.AssemblyPath is not null)
         {
             Log?.Invoke($"The project's App could not start inside the renderer; using the default theme instead.{Environment.NewLine}{FirstLines(ex.ErrorOutput, 3)}");
             try
             {
-                connection = await RenderHostConnection.StartAsync(new RenderHostStartInfo(executable, key.AssemblyPath, UseUserApplication: false)).ConfigureAwait(false);
+                connection = await RenderHostConnection.StartAsync(new RenderHostStartInfo(executable, assemblyPath, UseUserApplication: false, key.ProjectDirectory)).ConfigureAwait(false);
             }
             catch (RenderHostStartException fallback)
             {
@@ -306,7 +358,7 @@ public sealed class RenderHostManager : IAsyncDisposable
             throw new InvalidOperationException($"The renderer in {Path.GetDirectoryName(executable)} renders {info.FrameworkId}, not {key.Profile.DisplayName}. Reinstall xDesigner.");
         }
 
-        Log?.Invoke($"Renderer ready ({key}): {key.Profile.Family} {info.FrameworkVersion}, app {info.ApplicationType}, design mode {(info.IsDesignMode ? "on" : "off")}.");
+        Log?.Invoke($"Renderer ready ({key}): {key.Profile.DescribeVersion(info.FrameworkVersion)}, app {info.ApplicationType}, design mode {(info.IsDesignMode ? "on" : "off")}.");
         foreach (var warning in info.Warnings)
         {
             Log?.Invoke($"Renderer warning: {warning}");

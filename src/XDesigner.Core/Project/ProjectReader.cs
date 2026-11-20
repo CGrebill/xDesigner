@@ -6,6 +6,8 @@ namespace XDesigner.Core.Project;
 
 /// <summary>An opened project (§11.1), as MSBuild evaluates it.</summary>
 /// <param name="TargetPath">The built assembly (<c>bin/Debug/net10.0/App.dll</c>); may not exist yet.</param>
+/// <param name="Platform">The platform it is built for (<c>x64</c>), for projects that need one (WinUI has no AnyCPU build); else null.</param>
+/// <param name="IsPackaged">A packaged (MSIX) WinUI app: it runs from a registered package, not from its exe (§11.3).</param>
 public sealed record ProjectInfo(
     string ProjectPath,
     string Name,
@@ -13,7 +15,9 @@ public sealed record ProjectInfo(
     string RootNamespace,
     string TargetPath,
     string TargetFramework,
-    string OutputType)
+    string OutputType,
+    string? Platform = null,
+    bool IsPackaged = false)
 {
     public string Directory => Path.GetDirectoryName(ProjectPath)!;
 
@@ -35,11 +39,17 @@ public sealed record ProjectInfo(
 /// <summary>Reads projects and solutions (§11.1): properties via <c>dotnet msbuild -getProperty</c>, files, solution entries.</summary>
 public static partial class ProjectReader
 {
-    private static readonly string[] Properties = ["TargetPath", "AssemblyName", "RootNamespace", "TargetFramework", "TargetFrameworks", "OutputType"];
+    private static readonly string[] Properties =
+        ["TargetPath", "AssemblyName", "RootNamespace", "TargetFramework", "TargetFrameworks", "OutputType", "Platform", "UseWinUI", "WindowsPackageType"];
+
+    /// <summary>The platform WinUI projects are built for here: this machine's (WinUI has no AnyCPU build).</summary>
+    public static string NativePlatform =>
+        System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "ARM64" : "x64";
 
     /// <summary>
     /// Evaluates the project with MSBuild (no build needed). A multi-targeted project is evaluated for its first desktop
-    /// framework (one without a platform suffix such as <c>-android</c>), falling back to its first framework.
+    /// framework (one without a platform suffix such as <c>-android</c>), falling back to its first framework. A WinUI
+    /// project without a platform of its own is evaluated for <see cref="NativePlatform"/>, as it is built.
     /// </summary>
     public static async Task<ProjectInfo> ReadAsync(string projectPath, CancellationToken cancellationToken = default)
     {
@@ -55,6 +65,20 @@ public static partial class ProjectReader
             values = await GetPropertiesAsync(projectPath, [$"-p:TargetFramework={pick}"], cancellationToken).ConfigureAwait(false);
         }
 
+        string? platform = null;
+        var isWinUI = string.Equals(values.GetValueOrDefault("UseWinUI"), "true", StringComparison.OrdinalIgnoreCase);
+        if (isWinUI)
+        {
+            platform = values.GetValueOrDefault("Platform") is { } own && !string.Equals(own, "AnyCPU", StringComparison.OrdinalIgnoreCase) && own.Length > 0 ? own : NativePlatform;
+            if (!string.Equals(values.GetValueOrDefault("Platform"), platform, StringComparison.OrdinalIgnoreCase))
+            {
+                string[] extra = values.GetValueOrDefault("TargetFramework") is { Length: > 0 } tfm
+                    ? [$"-p:TargetFramework={tfm}", $"-p:Platform={platform}"]
+                    : [$"-p:Platform={platform}"];
+                values = await GetPropertiesAsync(projectPath, extra, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
         var name = Path.GetFileNameWithoutExtension(projectPath);
         var assemblyName = values.GetValueOrDefault("AssemblyName") is { Length: > 0 } a ? a : name;
         return new ProjectInfo(
@@ -64,7 +88,9 @@ public static partial class ProjectReader
             values.GetValueOrDefault("RootNamespace") is { Length: > 0 } ns ? ns : assemblyName,
             values.GetValueOrDefault("TargetPath") ?? "",
             values.GetValueOrDefault("TargetFramework") ?? "",
-            values.GetValueOrDefault("OutputType") ?? "");
+            values.GetValueOrDefault("OutputType") ?? "",
+            platform,
+            isWinUI && !string.Equals(values.GetValueOrDefault("WindowsPackageType"), "None", StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task<Dictionary<string, string>> GetPropertiesAsync(string projectPath, string[] extra, CancellationToken cancellationToken)

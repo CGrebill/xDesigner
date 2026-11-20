@@ -8,6 +8,9 @@ public enum ItemKind
 {
     Window,
     UserControl,
+
+    /// <summary>WinUI only (Avalonia has no pages).</summary>
+    Page,
 }
 
 /// <summary>
@@ -69,7 +72,17 @@ public static class ProjectTemplates
     private static readonly HashSet<string> TemplateTypeNames = new(StringComparer.Ordinal)
     {
         "Application", "Window", "UserControl", "AppBuilder", "AvaloniaXamlLoader", "IClassicDesktopStyleApplicationLifetime", "STAThread",
+        // WinUI
+        "Page", "WinRT", "LaunchActivatedEventArgs", "DispatcherQueue", "DispatcherQueueSynchronizationContext", "SynchronizationContext",
     };
+
+    /// <summary>The item kinds Project ▸ Add offers for a framework.</summary>
+    public static IReadOnlyList<ItemKind> ItemKindsFor(Frameworks.FrameworkProfile profile) =>
+        profile.Family == Frameworks.FrameworkFamily.WinUI ? [ItemKind.Window, ItemKind.Page, ItemKind.UserControl] : [ItemKind.Window, ItemKind.UserControl];
+
+    /// <summary>The embedded item templates of a framework.</summary>
+    private static string ItemsFolder(Frameworks.FrameworkProfile profile) =>
+        profile.Family == Frameworks.FrameworkFamily.WinUI ? "WinUIItems/" : "Items/";
 
     /// <summary>A C# namespace for a project name: <c>My-App.Tools</c> → <c>My_App.Tools</c>.</summary>
     public static string NamespaceFor(string name) =>
@@ -80,7 +93,8 @@ public static class ProjectTemplates
     /// Returns the project path. Fails if the folder exists and isn't empty.
     /// </summary>
     /// <param name="framework">Which framework version to create it for (Avalonia 12 when omitted).</param>
-    public static string CreateApp(string parentDirectory, string name, string title, Frameworks.FrameworkProfile? framework = null)
+    /// <param name="packaged">WinUI: a packaged (MSIX) app, with a <c>Package.appxmanifest</c> and logos; else an unpackaged one.</param>
+    public static string CreateApp(string parentDirectory, string name, string title, Frameworks.FrameworkProfile? framework = null, bool packaged = false)
     {
         framework ??= Frameworks.FrameworkProfile.Avalonia12;
         if (framework.ProjectTemplate is not { } template || framework.TemplateVersion is not { } frameworkVersion)
@@ -106,49 +120,149 @@ public static class ProjectTemplates
             ["$title$"] = System.Security.SecurityElement.Escape(
                 Properties.XamlValueSerializer.ToAttribute(string.IsNullOrWhiteSpace(title) ? name : title.Trim())),
             ["$avaloniaversion$"] = frameworkVersion,
+            ["$windowsappsdkversion$"] = frameworkVersion,
+            // WinUI: unpackaged apps say so; packaged ones are what WinUI builds by default.
+            ["$packaging$"] = packaged ? "" : "    <WindowsPackageType>None</WindowsPackageType>\r\n",
+            ["$packagename$"] = PackageName(name),
+            ["$packagetitle$"] = System.Security.SecurityElement.Escape(string.IsNullOrWhiteSpace(title) ? name : title.Trim()),
         };
 
-        Directory.CreateDirectory(Path.Combine(dir, "Assets"));
+        var assets = Path.Combine(dir, "Assets");
+        Directory.CreateDirectory(assets);
         foreach (var (file, text) in Templates(template + "/"))
         {
+            if (file == "Package.appxmanifest.template" && !packaged)
+            {
+                continue;
+            }
+
             var target = file switch
             {
                 "Project.csproj.template" => $"{name}.csproj",
                 "global.json.template" => "global.json",
+                "Package.appxmanifest.template" => "Package.appxmanifest",
                 "gitignore" => ".gitignore",
                 _ => file,
             };
             Write(Path.Combine(dir, target), Replace(text, tokens));
         }
 
+        if (packaged)
+        {
+            // The logos the package manifest names (plain squares to replace with your own).
+            foreach (var (file, size) in new[] { ("StoreLogo.png", 50), ("Square150x150Logo.png", 150), ("Square44x44Logo.png", 44) })
+            {
+                File.WriteAllBytes(Path.Combine(assets, file), SolidPng(size, 0x00, 0x78, 0xD4));
+            }
+        }
+
         return Path.Combine(dir, $"{name}.csproj");
     }
 
-    /// <summary>Why a class name can't be used for a new Window/UserControl in <paramref name="folder"/>, or null.</summary>
-    public static string? ValidateItemName(string folder, string className)
+    /// <summary>A package identity name: letters, digits, <c>.</c> and <c>-</c>, 3 to 50 characters.</summary>
+    internal static string PackageName(string projectName)
     {
+        var name = new string(projectName.Select(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' ? c : '-').ToArray()).Trim('.', '-');
+        name = name.Length < 3 ? name + "App" : name;
+        return name.Length > 50 ? name[..50].TrimEnd('.', '-') : name;
+    }
+
+    /// <summary>A square PNG of one colour.</summary>
+    internal static byte[] SolidPng(int size, byte red, byte green, byte blue)
+    {
+        var raw = new byte[size * ((size * 3) + 1)];
+        for (var y = 0; y < size; y++)
+        {
+            var row = y * ((size * 3) + 1); // filter byte 0, then RGB
+            for (var x = 0; x < size; x++)
+            {
+                raw[row + 1 + (x * 3)] = red;
+                raw[row + 2 + (x * 3)] = green;
+                raw[row + 3 + (x * 3)] = blue;
+            }
+        }
+
+        using var compressed = new MemoryStream();
+        using (var zlib = new System.IO.Compression.ZLibStream(compressed, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write(raw);
+        }
+
+        var header = new byte[13];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(header, size);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(4), size);
+        header[8] = 8; // bit depth
+        header[9] = 2; // truecolour
+        using var png = new MemoryStream();
+        png.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+        WriteChunk(png, "IHDR", header);
+        WriteChunk(png, "IDAT", compressed.ToArray());
+        WriteChunk(png, "IEND", []);
+        return png.ToArray();
+    }
+
+    private static void WriteChunk(Stream png, string type, byte[] data)
+    {
+        Span<byte> number = stackalloc byte[4];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(number, data.Length);
+        png.Write(number);
+        var typeBytes = Encoding.ASCII.GetBytes(type);
+        png.Write(typeBytes);
+        png.Write(data);
+        var crc = Crc32(typeBytes, Crc32([], 0xFFFFFFFFu, finish: false), finish: false);
+        crc = Crc32(data, crc, finish: true);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(number, crc);
+        png.Write(number);
+    }
+
+    private static uint Crc32(ReadOnlySpan<byte> data, uint crc, bool finish)
+    {
+        foreach (var b in data)
+        {
+            crc ^= b;
+            for (var k = 0; k < 8; k++)
+            {
+                crc = (crc & 1) != 0 ? 0xEDB88320u ^ (crc >> 1) : crc >> 1;
+            }
+        }
+
+        return finish ? crc ^ 0xFFFFFFFFu : crc;
+    }
+
+    /// <summary>Why a class name can't be used for a new Window/UserControl in <paramref name="folder"/>, or null.</summary>
+    public static string? ValidateItemName(string folder, string className, Frameworks.FrameworkProfile? profile = null)
+    {
+        var extension = (profile ?? Frameworks.FrameworkProfile.Avalonia12).FileExtension;
         if (!SyntaxFacts.IsValidIdentifier(className) || SyntaxFacts.GetKeywordKind(className) != SyntaxKind.None)
         {
             return "Enter a C# class name (letters, digits and _; starts with a letter).";
         }
 
-        if (className is "Window" or "UserControl")
+        if (className is "Window" or "UserControl" or "Page")
         {
             return $"A class can't be called {className}: it would derive from itself. Try My{className}.";
         }
 
-        return File.Exists(Path.Combine(folder, className + ".axaml")) || File.Exists(Path.Combine(folder, className + ".axaml.cs"))
-            ? $"{className}.axaml already exists in that folder."
+        return File.Exists(Path.Combine(folder, className + extension)) || File.Exists(Path.Combine(folder, className + extension + ".cs"))
+            ? $"{className}{extension} already exists in that folder."
             : null;
     }
 
     /// <summary>
-    /// Creates <c>{folder}/{className}.axaml</c> and its code-behind. The namespace is the project's root namespace plus the
-    /// folders below the project (<c>Views/Dialogs</c> → <c>App.Views.Dialogs</c>), as the .NET templates do. Returns the XAML path.
+    /// Creates <c>{folder}/{className}.axaml</c> (<c>.xaml</c> in WinUI) and its code-behind. The namespace is the project's
+    /// root namespace plus the folders below the project (<c>Views/Dialogs</c> → <c>App.Views.Dialogs</c>), as the .NET
+    /// templates do. Returns the XAML path.
     /// </summary>
-    public static string CreateItem(ProjectInfo project, string folder, string className, ItemKind kind)
+    /// <param name="profile">The project's framework (Avalonia 12 when omitted).</param>
+    public static string CreateItem(ProjectInfo project, string folder, string className, ItemKind kind, Frameworks.FrameworkProfile? profile = null)
     {
-        if (ValidateItemName(folder, className) is { } problem)
+        profile ??= Frameworks.FrameworkProfile.Avalonia12;
+        if (!ItemKindsFor(profile).Contains(kind))
+        {
+            throw new ProjectException($"{profile.DisplayName} projects have no {kind} item.");
+        }
+
+        if (ValidateItemName(folder, className, profile) is { } problem)
         {
             throw new ProjectException(problem);
         }
@@ -161,11 +275,11 @@ public static class ProjectTemplates
 
         Directory.CreateDirectory(folder);
         string? xaml = null;
-        foreach (var (file, text) in Templates("Items/").Where(t => t.File.StartsWith(kind + ".", StringComparison.Ordinal)))
+        foreach (var (file, text) in Templates(ItemsFolder(profile)).Where(t => t.File.StartsWith(kind + ".", StringComparison.Ordinal)))
         {
             var target = Path.Combine(folder, className + file[kind.ToString().Length..]); // Window.axaml.cs → Name.axaml.cs
             Write(target, Replace(text, tokens));
-            if (target.EndsWith(".axaml", StringComparison.OrdinalIgnoreCase))
+            if (target.EndsWith(profile.FileExtension, StringComparison.OrdinalIgnoreCase))
             {
                 xaml = target;
             }

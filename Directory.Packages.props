@@ -4,6 +4,8 @@
     <AvaloniaVersion>12.1.6</AvaloniaVersion>
     <!-- The Avalonia 11 render host, its sample and the Avalonia 11 project template (VersionOverride). -->
     <Avalonia11Version>11.3.23</Avalonia11Version>
+    <!-- The app, the WinUI render host (which reports it in its handshake) and the WinUI project templates. -->
+    <WindowsAppSdkVersion>2.7.0</WindowsAppSdkVersion>
   </PropertyGroup>
   <ItemGroup Label="Avalonia (RenderHost, samples)">
     <PackageVersion Include="Avalonia" Version="$(AvaloniaVersion)" />
@@ -21,12 +23,12 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.12.0" />
   </ItemGroup>
   <ItemGroup Label="WinUI 3 app">
-    <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.7.0" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK" Version="$(WindowsAppSdkVersion)" />
     <!-- Components of the metapackage the app doesn't use; referenced only to exclude them (XDesigner.App.csproj). -->
-    <PackageVersion Include="Microsoft.WindowsAppSDK.AI" Version="2.7.0" />
-    <PackageVersion Include="Microsoft.WindowsAppSDK.ML" Version="2.7.0" />
-    <PackageVersion Include="Microsoft.WindowsAppSDK.Search" Version="2.7.0" />
-    <PackageVersion Include="Microsoft.WindowsAppSDK.Widgets" Version="2.7.0" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.AI" Version="$(WindowsAppSdkVersion)" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.ML" Version="$(WindowsAppSdkVersion)" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Search" Version="$(WindowsAppSdkVersion)" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Widgets" Version="$(WindowsAppSdkVersion)" />
     <PackageVersion Include="Microsoft.Windows.AI.MachineLearning" Version="2.5.96" />
     <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />

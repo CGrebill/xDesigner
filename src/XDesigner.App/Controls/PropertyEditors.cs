@@ -29,6 +29,9 @@ internal sealed class PropertyEditorContext
     /// <summary>The document's project folder (images live in its Assets folder, §12); null without a project.</summary>
     public required Func<string?> ProjectDirectory { get; init; }
 
+    /// <summary>The document's framework (how image paths are written).</summary>
+    public required Func<Core.Frameworks.FrameworkProfile?> Profile { get; init; }
+
     /// <summary>"Browse…": pick an image file, copy it into Assets, hand its XAML path to the callback, then rebuild.</summary>
     public required Func<Action<string>, Task> BrowseImageAsync { get; init; }
 }
@@ -283,7 +286,7 @@ internal sealed class TextPropertyEditor : PropertyEditor
                 return;
             }
 
-            var images = Core.Assets.ProjectAssets.ListImages(dir);
+            var images = Core.Assets.ProjectAssets.ListImages(dir, Context.Profile());
             list.Visibility = images.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             note.Text = images.Count > 0
                 ? "Pick one of the project's images, or Browse… to copy another into its Assets folder."

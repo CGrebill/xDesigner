@@ -44,6 +44,10 @@ public sealed partial class ShellViewModel
     [ObservableProperty]
     public partial SolutionModel? Solution { get; private set; }
 
+    /// <summary>The framework of <see cref="Project"/> (what Project ▸ Add creates), or null without a project.</summary>
+    public Core.Frameworks.FrameworkProfile? ProjectProfile =>
+        Project is { } project ? Solution?.Find(project.ProjectPath)?.Framework.Profile ?? project.DetectFramework().Profile : null;
+
     /// <summary>Opens a <c>.csproj</c>, <c>.sln</c>/<c>.slnx</c> or a XAML file.</summary>
     public async Task OpenAnyAsync(string path)
     {
@@ -224,7 +228,20 @@ public sealed partial class ShellViewModel
         BuildResult result;
         try
         {
-            result = await BuildRunner.BuildAsync(target, line => RunOnUi(() => AppendBuild(line)));
+            // A solution with WinUI projects is built project by project, each with its platform (SolutionModel.BuildSteps).
+            var steps = solution?.BuildSteps ?? [new BuildStep(project.ProjectPath, project.Platform)];
+            var results = new List<BuildResult>();
+            foreach (var step in steps)
+            {
+                if (steps.Count > 1)
+                {
+                    AppendBuild($"Building {Path.GetFileName(step.Path)}{(step.Platform is { } p ? $" ({p})" : "")}…");
+                }
+
+                results.Add(await BuildRunner.BuildAsync(step.Path, line => RunOnUi(() => AppendBuild(line)), platform: step.Platform));
+            }
+
+            result = BuildResult.Combine(results);
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException)
         {

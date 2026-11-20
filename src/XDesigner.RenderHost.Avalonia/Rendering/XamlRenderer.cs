@@ -156,19 +156,11 @@ internal sealed class XamlRenderer
         }
     }
 
-    /// <summary>The most pixels one frame may have (32 MP, 128 MB of BGRA); a larger frame is rendered at a lower scale.</summary>
-    internal const double MaxFramePixels = 32_000_000;
+    /// <inheritdoc cref="FrameScale.MaxFramePixels"/>
+    internal const double MaxFramePixels = FrameScale.MaxFramePixels;
 
-    /// <summary>
-    /// The requested scale, lowered when the frame would exceed <see cref="MaxFramePixels"/> (a large window at a high zoom):
-    /// the result carries the scale used, and the surface stretches the frame to fit.
-    /// </summary>
-    internal static double EffectiveScale(Size size, double requested)
-    {
-        var scale = requested is > 0 and < double.PositiveInfinity ? requested : 1.0;
-        var area = Math.Max(1, size.Width) * Math.Max(1, size.Height);
-        return area * scale * scale > MaxFramePixels ? Math.Sqrt(MaxFramePixels / area) : scale;
-    }
+    /// <inheritdoc cref="FrameScale.Effective"/>
+    internal static double EffectiveScale(Size size, double requested) => FrameScale.Effective(size.Width, size.Height, requested);
 
     private static (int Width, int Height, byte[] Pixels) RenderPixels(Window window, double scale)
     {

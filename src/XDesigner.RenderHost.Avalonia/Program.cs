@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -12,18 +11,6 @@ namespace XDesigner.RenderHost;
 
 internal static class Program
 {
-    /// <summary>Exit codes the designer app interprets when it starts the host.</summary>
-    internal static class ExitCodes
-    {
-        public const int Ok = 0;
-        public const int BadArguments = 1;
-
-        /// <summary>Avalonia/user app setup failed; the app retries with <c>--no-user-app</c>.</summary>
-        public const int SetupFailed = 3;
-
-        public const int RenderFailed = 4;
-    }
-
     public static int Main(string[] args)
     {
         RenderHostOptions options;
@@ -35,13 +22,13 @@ internal static class Program
         {
             Console.Error.WriteLine(ex.Message);
             PrintUsage();
-            return ExitCodes.BadArguments;
+            return RenderHostExitCodes.BadArguments;
         }
 
         if (options.ShowVersion)
         {
             Console.WriteLine($"XDesigner.RenderHost protocol {ProtocolInfo.Version}, Avalonia {HostVersions.AvaloniaVersion}");
-            return ExitCodes.Ok;
+            return RenderHostExitCodes.Ok;
         }
 
         if (options.RenderFile is not null)
@@ -52,7 +39,7 @@ internal static class Program
         if (options.PipeName is null)
         {
             PrintUsage();
-            return ExitCodes.BadArguments;
+            return RenderHostExitCodes.BadArguments;
         }
 
         return Serve(options);
@@ -63,7 +50,7 @@ internal static class Program
     {
         // The server watches the designer once it runs; until then (the project's App may hang while it's created),
         // a designer that goes away ends this process here.
-        using var parent = options.ParentProcessId is { } pid ? ExitIfParentExitsDuringStartup(pid) : null;
+        using var startup = RenderHostServer.ExitIfParentExitsDuringStartup(options.ParentProcessId);
 
         HostRuntime runtime;
         try
@@ -74,45 +61,17 @@ internal static class Program
         {
             // Before the pipe exists: the app sees the exit code and can retry with --no-user-app.
             Console.Error.WriteLine($"Setup failed: {ex}");
-            return ExitCodes.SetupFailed;
+            return RenderHostExitCodes.SetupFailed;
         }
         finally
         {
-            s_started = true;
+            startup?.Started();
         }
 
         using (runtime)
         {
-            return RenderHostServer.RunAsync(options, runtime).GetAwaiter().GetResult();
-        }
-    }
-
-    private static volatile bool s_started;
-
-    private static Process? ExitIfParentExitsDuringStartup(int parentPid)
-    {
-        try
-        {
-            var parent = Process.GetProcessById(parentPid);
-            parent.EnableRaisingEvents = true;
-            parent.Exited += (_, _) =>
-            {
-                if (!s_started)
-                {
-                    Environment.Exit(ExitCodes.Ok);
-                }
-            };
-            if (parent.HasExited)
-            {
-                Environment.Exit(ExitCodes.Ok);
-            }
-
-            return parent;
-        }
-        catch (ArgumentException)
-        {
-            Environment.Exit(ExitCodes.Ok); // already gone
-            return null;
+            var service = new RenderHostService(runtime);
+            return RenderHostServer.RunAsync(options, service, service.ShutdownRequested).GetAwaiter().GetResult();
         }
     }
 
@@ -127,7 +86,7 @@ internal static class Program
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Setup failed: {ex}");
-            return ExitCodes.SetupFailed;
+            return RenderHostExitCodes.SetupFailed;
         }
 
         using (runtime)
@@ -140,44 +99,17 @@ internal static class Program
 
             var request = new RenderRequest(1, File.ReadAllText(options.RenderFile!), options.Scale, options.Theme, options.Size);
             var renderer = new XamlRenderer(runtime.UserAssembly);
-            var (result, saveError) = runtime.InvokeAsync(() =>
-            {
-                var r = renderer.Render(request);
-                return (r, r.Success ? FramePng.TrySave(r, options.OutputPath!) : null);
-            }).GetAwaiter().GetResult();
-
-            if (!result.Success)
-            {
-                var e = result.Error!;
-                Console.Error.WriteLine($"Render failed: {e.Message} ({e.ExceptionType}) line {e.Line?.ToString(CultureInfo.InvariantCulture) ?? "?"}, column {e.Column?.ToString(CultureInfo.InvariantCulture) ?? "?"}{(e.OffendingType is null ? "" : $", in {e.OffendingType}")}");
-                return ExitCodes.RenderFailed;
-            }
-
-            if (saveError is not null)
-            {
-                Console.Error.WriteLine($"Could not save PNG: {saveError}");
-                return ExitCodes.RenderFailed;
-            }
-
-            var layoutPath = Path.ChangeExtension(options.OutputPath!, ".layout.json");
-            File.WriteAllText(layoutPath, JsonSerializer.Serialize(result.Root, JsonOptions));
-            Console.WriteLine($"Rendered {result.PixelWidth}x{result.PixelHeight} px ({result.RootKind}) to {options.OutputPath}; layout in {layoutPath}");
-            return ExitCodes.Ok;
+            var result = runtime.InvokeAsync(() => renderer.Render(request)).GetAwaiter().GetResult();
+            return RenderOnceOutput.Write(result, options.OutputPath!);
         }
     }
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() },
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
 
     private static void PrintUsage() => Console.Error.WriteLine(
         """
         Usage:
-          XDesigner.RenderHost --pipe <name> [--assembly <path>] [--parent-pid <pid>] [--no-user-app]
-          XDesigner.RenderHost --render <file.axaml> --out <file.png> [--assembly <path>] [--scale <n>] [--theme Light|Dark] [--size <w>x<h>] [--no-user-app]
-          XDesigner.RenderHost --version
+          XDesigner.RenderHost.Avalonia12 --pipe <name> [--assembly <path>] [--parent-pid <pid>] [--no-user-app]
+          XDesigner.RenderHost.Avalonia12 --render <file.axaml> --out <file.png> [--assembly <path>] [--scale <n>] [--theme Light|Dark] [--size <w>x<h>] [--no-user-app]
+          XDesigner.RenderHost.Avalonia12 --version
+        (XDesigner.RenderHost.Avalonia11 takes the same arguments.)
         """);
 }

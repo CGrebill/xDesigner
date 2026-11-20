@@ -54,6 +54,7 @@ public sealed partial class PropertiesPane : UserControl
             SelectElement = id => Document?.Selection.Select(id),
             FontFamilies = () => _fonts,
             ProjectDirectory = () => Document?.ProjectDirectory,
+            Profile = () => Document?.Xaml.Profile,
             BrowseImageAsync = commit => Document is { } doc && BrowseImage is { } browse ? browse(doc, commit) : Task.CompletedTask,
         };
         ShowMessage("Open a file to see the selected control's properties.");

@@ -36,18 +36,20 @@ attention (confirmations, warnings, errors) slide in under the title bar.
 
 ## Projects and files
 
-- **File › New project…** (Ctrl+Shift+N) creates an Avalonia desktop app: choose Avalonia 12 or 11, a name, a folder
-  (by default `Documents\Avalonia Projects`) and the window title. xDesigner builds it and opens `MainWindow.axaml`. The
-  project is a normal .NET project; open it in Visual Studio, VS Code or Rider whenever you like.
+- **File › New project…** (Ctrl+Shift+N) creates a desktop app: choose Avalonia 12, Avalonia 11 or WinUI 3 (and for
+  WinUI whether it is **Packaged (MSIX)**), a name, a folder (by default `Documents\Avalonia Projects`) and the window
+  title. xDesigner builds it and opens its main window. The project is a normal .NET project; open it in Visual Studio,
+  VS Code or Rider whenever you like.
 - **Project › Open project…** (Ctrl+Shift+O) opens a `.csproj`, `.sln` or `.slnx`. All of a solution's projects open
   together, in **Solution Explorer** (the **Solution** tab above the outline): each project shows the framework it
   uses, and the startup project (the one Run starts, in bold) can be changed with a right-click. Projects can use
-  Avalonia 11 (11.1 or later) or 12, even both in one solution: each file is drawn by its own project's Avalonia
-  version. Double-click a XAML file to design it, or any other file to open it in your code editor. The startup
+  Avalonia 11 (11.1 or later), Avalonia 12 or WinUI 3, mixed in one solution: each file is drawn by its own project's
+  framework. Double-click a XAML file to design it, or any other file to open it in your code editor. The startup
   project's XAML files are also listed under **Project › Files**.
 - **File › Open…** (Ctrl+O) opens a single `.axaml` file, or a project. A file opened on its own still finds its
   project, so its custom controls render.
-- **Project › Add window…** and **Add user control…** create a new `.axaml` file with its code-behind and open it.
+- **Project › Add window…** and **Add user control…** (and **Add page…** in a WinUI project) create a new `.axaml`
+  file (`.xaml` in WinUI) with its code-behind and open it.
 - **File › Open recent** lists recent files and projects.
 - **Save** (Ctrl+S), **Save all** (Ctrl+Shift+S), **Close** (Ctrl+W). A tab with unsaved changes shows a dot, and
   xDesigner asks before closing it.
@@ -143,8 +145,9 @@ The **eye** icon hides a control on the form while you design, to get at what's 
 
 Properties that take an image (an Image's Source, a Window's Icon) have a picker that lists the images in the
 project's `Assets` folder. **Browse…** picks any image: xDesigner copies it into `Assets` (keeping a numbered copy if a
-different file of that name is there), makes sure the project includes `Assets` as resources, sets the property to
-`/Assets/name.png` and rebuilds so the form can show it. **Remove** clears the property. Images need a project; for a
+different file of that name is there), makes sure the project includes `Assets` (as Avalonia resources, or in WinUI as
+content copied next to the app), sets the property to `/Assets/name.png` (`ms-appx:///Assets/name.png` in WinUI) and
+rebuilds so the form can show it. **Remove** clears the property. Images need a project; for a
 file opened on its own, xDesigner explains that.
 
 ## Previewing
@@ -170,6 +173,11 @@ Studio, are picked up too.
 (Shift+F5) closes it. Build errors are listed in Output › Error List (double-click one to open its file at the line)
 and, in full, in Output › Build. With a solution open, Rebuild builds the whole solution and Run starts the startup
 project.
+
+A packaged WinUI app is run the way Visual Studio runs it: xDesigner registers the build with Windows and starts it as an
+installed app (its console output isn't shown). Windows only allows that with **Developer Mode** on (Settings › System ›
+For developers); without it, xDesigner starts the app's exe directly and says so in Output › Run. The app then works,
+except for features that need a package identity, such as notifications.
 
 Building and running needs the [.NET 10 SDK](https://dotnet.microsoft.com/download) (the project's `global.json` can ask
 for another version). Opening and designing files works without it.

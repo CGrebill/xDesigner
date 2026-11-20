@@ -136,6 +136,9 @@
         <MenuFlyoutItem x:Name="AddWindowMenuItem" Text="Add window…" Click="AddWindow_Click" IsEnabled="False">
           <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE737;" /></MenuFlyoutItem.Icon>
         </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="AddPageMenuItem" Text="Add page…" Click="AddPage_Click" Visibility="Collapsed">
+          <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7C3;" /></MenuFlyoutItem.Icon>
+        </MenuFlyoutItem>
         <MenuFlyoutItem x:Name="AddUserControlMenuItem" Text="Add user control…" Click="AddUserControl_Click" IsEnabled="False">
           <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A1;" /></MenuFlyoutItem.Icon>
         </MenuFlyoutItem>

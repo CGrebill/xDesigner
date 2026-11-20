@@ -37,8 +37,8 @@ public sealed partial class MainWindow
         bool projectChanged;
         try
         {
-            import = await Task.Run(() => ProjectAssets.Import(directory, file.Path));
-            projectChanged = await Task.Run(() => ProjectFileEditor.EnsureAvaloniaResource(project.ProjectPath));
+            import = await Task.Run(() => ProjectAssets.Import(directory, file.Path, document.Xaml.Profile));
+            projectChanged = await Task.Run(() => ProjectFileEditor.EnsureAssetsItem(project.ProjectPath, document.Xaml.Profile));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException or InvalidDataException)
         {
@@ -53,7 +53,7 @@ public sealed partial class MainWindow
 
         if (projectChanged)
         {
-            ViewModel.AppendLog($"Added <AvaloniaResource Include=\"{ProjectFileEditor.AssetsInclude}\" /> to {Path.GetFileName(project.ProjectPath)} so the image is packaged with the app.");
+            ViewModel.AppendLog($"Added {ProjectFileEditor.AssetsItemFor(document.Xaml.Profile)} to {Path.GetFileName(project.ProjectPath)} so the image is packaged with the app.");
         }
 
         commit(import.XamlPath);

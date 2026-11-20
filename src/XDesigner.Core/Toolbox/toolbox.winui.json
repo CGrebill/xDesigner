@@ -1,0 +1,94 @@
+{
+  "$comment": "WinUI 3 toolbox layout and drop defaults (docs/ARCHITECTURE.md §7.2, §9.1). Types are WinUI short names (Microsoft.UI.Xaml.Controls and friends); entries the renderer doesn't know are hidden. '{name}' is replaced by the generated control name. 'sizeWhenPositioned' applies only when dropped at a point (Canvas, Grid). Glyphs are Segoe Fluent Icons code points.",
+  "categories": [
+    {
+      "name": "Common",
+      "items": [
+        { "type": "Button", "glyph": "E739", "attributes": { "Content": "{name}" } },
+        { "type": "TextBlock", "glyph": "E8D2", "attributes": { "Text": "{name}" } },
+        { "type": "TextBox", "glyph": "E70F", "attributes": { "Width": "150" } },
+        { "type": "CheckBox", "glyph": "E73A", "attributes": { "Content": "{name}" } },
+        { "type": "RadioButton", "glyph": "ECCB", "attributes": { "Content": "{name}" } },
+        { "type": "ComboBox", "glyph": "E70D", "attributes": { "Width": "150" } },
+        { "type": "ListView", "glyph": "E8FD", "attributes": { "Width": "150", "Height": "100" } },
+        { "type": "Image", "glyph": "EB9F", "attributes": { "Width": "100", "Height": "100" } },
+        { "type": "Slider", "glyph": "E9E9", "attributes": { "Width": "150" } },
+        { "type": "ProgressBar", "glyph": "E9D9", "attributes": { "Width": "150", "Value": "50" } },
+        { "type": "ToggleSwitch", "glyph": "E8AB", "attributes": { "Header": "{name}" } },
+        { "type": "NumberBox", "glyph": "EC8F", "attributes": { "Width": "150" } },
+        { "type": "PasswordBox", "glyph": "E8D7", "attributes": { "Width": "150" } },
+        { "type": "HyperlinkButton", "glyph": "E71B", "attributes": { "Content": "{name}" } },
+        { "type": "InfoBar", "glyph": "E946", "attributes": { "IsOpen": "True", "Title": "{name}", "Message": "Message" } }
+      ]
+    },
+    {
+      "name": "Layout",
+      "items": [
+        { "type": "Grid", "glyph": "ECA5", "sizeWhenPositioned": { "Width": "200", "Height": "150" } },
+        { "type": "StackPanel", "glyph": "E8FD", "sizeWhenPositioned": { "Width": "200", "Height": "150" } },
+        { "type": "Canvas", "glyph": "E70A", "sizeWhenPositioned": { "Width": "200", "Height": "150" } },
+        { "type": "RelativePanel", "glyph": "E739", "sizeWhenPositioned": { "Width": "200", "Height": "150" } },
+        { "type": "VariableSizedWrapGrid", "glyph": "E80A", "sizeWhenPositioned": { "Width": "200", "Height": "150" } },
+        { "type": "Border", "glyph": "E739", "attributes": { "Width": "100", "Height": "100", "BorderBrush": "Gray", "BorderThickness": "1" } },
+        { "type": "ScrollViewer", "glyph": "E8CB", "sizeWhenPositioned": { "Width": "200", "Height": "150" } },
+        { "type": "Viewbox", "glyph": "E740", "sizeWhenPositioned": { "Width": "100", "Height": "100" } },
+        { "type": "Expander", "glyph": "E70D", "attributes": { "Header": "{name}" } },
+        { "type": "SplitView", "glyph": "E89F", "sizeWhenPositioned": { "Width": "300", "Height": "200" } }
+      ]
+    },
+    {
+      "name": "Containers & Items",
+      "items": [
+        { "type": "TabView", "glyph": "E7C4", "attributes": { "Width": "300", "Height": "200" } },
+        { "type": "GridView", "glyph": "ECA5", "attributes": { "Width": "200", "Height": "150" } },
+        { "type": "TreeView", "glyph": "E8B7", "attributes": { "Width": "200", "Height": "150" } },
+        { "type": "ItemsControl", "glyph": "E8FD" },
+        { "type": "FlipView", "glyph": "E8B9", "attributes": { "Width": "200", "Height": "150" } },
+        { "type": "MenuBar", "glyph": "E700" },
+        { "type": "CommandBar", "glyph": "E700" },
+        { "type": "NavigationView", "glyph": "E700", "attributes": { "Width": "400", "Height": "300" } }
+      ]
+    },
+    {
+      "name": "Input & Pickers",
+      "items": [
+        { "type": "DatePicker", "glyph": "E787" },
+        { "type": "TimePicker", "glyph": "E823" },
+        { "type": "CalendarDatePicker", "glyph": "E787" },
+        { "type": "CalendarView", "glyph": "E787" },
+        { "type": "AutoSuggestBox", "glyph": "E721", "attributes": { "Width": "150" } },
+        { "type": "RichEditBox", "glyph": "E70F", "attributes": { "Width": "200", "Height": "100" } },
+        { "type": "ToggleButton", "glyph": "E739", "attributes": { "Content": "{name}" } },
+        { "type": "RepeatButton", "glyph": "E739", "attributes": { "Content": "{name}" } },
+        { "type": "SplitButton", "glyph": "E739", "attributes": { "Content": "{name}" } },
+        { "type": "DropDownButton", "glyph": "E70D", "attributes": { "Content": "{name}" } },
+        { "type": "RadioButtons", "glyph": "ECCB" },
+        { "type": "RatingControl", "glyph": "E734" },
+        { "type": "ColorPicker", "glyph": "E790" }
+      ]
+    },
+    {
+      "name": "Status & Info",
+      "items": [
+        { "type": "ProgressRing", "glyph": "E895", "attributes": { "IsActive": "True" } },
+        { "type": "PersonPicture", "glyph": "E77B" },
+        { "type": "InfoBadge", "glyph": "E946", "attributes": { "Value": "1" } }
+      ]
+    },
+    {
+      "name": "Text",
+      "items": [
+        { "type": "RichTextBlock", "glyph": "E8D2" },
+        { "type": "FontIcon", "glyph": "E8D2", "attributes": { "Glyph": "" } }
+      ]
+    },
+    {
+      "name": "Shapes",
+      "items": [
+        { "type": "Rectangle", "glyph": "E739", "attributes": { "Width": "100", "Height": "60", "Fill": "LightGray" } },
+        { "type": "Ellipse", "glyph": "EA3A", "attributes": { "Width": "80", "Height": "80", "Fill": "LightGray" } },
+        { "type": "Line", "glyph": "E738", "attributes": { "X1": "0", "Y1": "0", "X2": "100", "Y2": "0", "Stroke": "Black", "StrokeThickness": "1" } }
+      ]
+    }
+  ]
+}

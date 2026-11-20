@@ -3,6 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>XDesigner.Core</RootNamespace>
+    <!-- LibraryImport (hard links for the WinUI host's shadow folder) generates pointer code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Description>All editing logic for the designer: XAML document model, commands and undo, placement, naming, code-behind generation, projects. References neither Avalonia nor WinUI.</Description>
   </PropertyGroup>
 

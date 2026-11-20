@@ -13,7 +13,8 @@ $notShipped = '^(Avalonia\.BuildServices|Microsoft\.CodeAnalysis\.Analyzers|Micr
 
 # The app and every render host. Keyed by name and version: the Avalonia 11 and 12 hosts ship different versions.
 $packages = @{}
-$assetsFiles = "src\XDesigner.App\obj\project.assets.json", "src\XDesigner.RenderHost.Avalonia\obj\project.assets.json", "src\XDesigner.RenderHost.Avalonia11\obj\project.assets.json"
+$assetsFiles = "src\XDesigner.App\obj\project.assets.json", "src\XDesigner.RenderHost.Avalonia\obj\project.assets.json", "src\XDesigner.RenderHost.Avalonia11\obj\project.assets.json",
+    "src\XDesigner.RenderHost.WinUI\obj\project.assets.json"
 foreach ($assets in $assetsFiles) {
     $json = Get-Content (Join-Path $root $assets) -Raw | ConvertFrom-Json
     foreach ($library in $json.libraries.PSObject.Properties) {

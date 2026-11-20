@@ -25,6 +25,9 @@ public sealed partial class MainWindow
         StopButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         StopMenuItem.IsEnabled = running;
         AddWindowMenuItem.IsEnabled = AddUserControlMenuItem.IsEnabled = project is not null;
+        AddPageMenuItem.Visibility = project is not null && ViewModel.ProjectProfile is { } profile && ProjectTemplates.ItemKindsFor(profile).Contains(ItemKind.Page)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private async void Run_Click(object sender, RoutedEventArgs e)
@@ -51,9 +54,25 @@ public sealed partial class MainWindow
             MinWidth = 220,
         };
         var description = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        void Describe() =>
-            description.Text = $"A desktop app for Windows, macOS and Linux ({frameworks[Math.Max(0, framework.SelectedIndex)].DisplayName}, .NET 10) with an empty main window.";
+        var packaged = new ToggleSwitch
+        {
+            Header = "Packaged (MSIX)",
+            OffContent = "Unpackaged: runs as an ordinary exe",
+            OnContent = "Packaged: runs as an installed app with package identity",
+        };
+        void Describe()
+        {
+            var selected = frameworks[Math.Max(0, framework.SelectedIndex)];
+            var winui = selected.Family == Core.Frameworks.FrameworkFamily.WinUI;
+            packaged.Visibility = winui ? Visibility.Visible : Visibility.Collapsed;
+            description.Text = winui
+                ? $"A Windows desktop app ({selected.DisplayName}, Windows App SDK {selected.TemplateVersion}, .NET 10) with an empty main window."
+                  + (packaged.IsOn ? " Running a packaged app from xDesigner registers it with Windows, which needs Developer Mode." : "")
+                : $"A desktop app for Windows, macOS and Linux ({selected.DisplayName}, .NET 10) with an empty main window.";
+        }
+
         framework.SelectionChanged += (_, _) => Describe();
+        packaged.Toggled += (_, _) => Describe();
         Describe();
         var where = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
         var problem = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = (Brush)Application.Current.Resources["NotifyErrorIcon"] };
@@ -73,7 +92,7 @@ public sealed partial class MainWindow
             {
                 Spacing = 12,
                 MinWidth = 440,
-                Children = { framework, description, name, locationRow, title, where, problem },
+                Children = { framework, description, packaged, name, locationRow, title, where, problem },
             },
             PrimaryButtonText = "Create",
             CloseButtonText = "Cancel",
@@ -119,7 +138,9 @@ public sealed partial class MainWindow
 
         _lastProjectsFolder = location.Text.Trim();
         Directory.CreateDirectory(_lastProjectsFolder);
-        if (await ViewModel.CreateProjectAsync(_lastProjectsFolder, name.Text.Trim(), title.Text, frameworks[Math.Max(0, framework.SelectedIndex)]) is { } failed)
+        var chosen = frameworks[Math.Max(0, framework.SelectedIndex)];
+        var asPackage = chosen.Family == Core.Frameworks.FrameworkFamily.WinUI && packaged.IsOn;
+        if (await ViewModel.CreateProjectAsync(_lastProjectsFolder, name.Text.Trim(), title.Text, chosen, asPackage) is { } failed)
         {
             ShowNotification(NotifyKind.Error, $"Couldn't create the project: {failed}");
         }
@@ -142,6 +163,8 @@ public sealed partial class MainWindow
 
     private async void AddUserControl_Click(object sender, RoutedEventArgs e) => await AddItemAsync(ItemKind.UserControl);
 
+    private async void AddPage_Click(object sender, RoutedEventArgs e) => await AddItemAsync(ItemKind.Page);
+
     /// <summary>Project ▸ Add: a class name; the files go next to the open document (or in the project folder).</summary>
     private async Task AddItemAsync(ItemKind kind)
     {
@@ -150,9 +173,16 @@ public sealed partial class MainWindow
             return;
         }
 
+        var profile = ViewModel.ProjectProfile ?? Core.Frameworks.FrameworkProfile.Avalonia12;
+        var extension = profile.FileExtension;
         var folder = ViewModel.DefaultItemFolder;
-        var label = kind == ItemKind.Window ? "window" : "user control";
-        var name = new TextBox { Header = "Class name", Text = kind == ItemKind.Window ? "SecondWindow" : "MyControl", MinWidth = 360 };
+        var (label, suggested) = kind switch
+        {
+            ItemKind.Window => ("window", "SecondWindow"),
+            ItemKind.Page => ("page", "SecondPage"),
+            _ => ("user control", "MyControl"),
+        };
+        var name = new TextBox { Header = "Class name", Text = suggested, MinWidth = 360 };
         var where = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
         var problem = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = (Brush)Application.Current.Resources["NotifyErrorIcon"] };
         var dialog = new ContentDialog
@@ -167,9 +197,9 @@ public sealed partial class MainWindow
 
         void Validate()
         {
-            var error = ProjectTemplates.ValidateItemName(folder, name.Text.Trim());
+            var error = ProjectTemplates.ValidateItemName(folder, name.Text.Trim(), profile);
             where.Text = error is null
-                ? $"Creates {Path.GetRelativePath(project.Directory, Path.Combine(folder, name.Text.Trim() + ".axaml"))} and its .axaml.cs in {project.Name}."
+                ? $"Creates {Path.GetRelativePath(project.Directory, Path.Combine(folder, name.Text.Trim() + extension))} and its {extension}.cs in {project.Name}."
                 : "";
             problem.Text = error ?? "";
             dialog.IsPrimaryButtonEnabled = error is null;

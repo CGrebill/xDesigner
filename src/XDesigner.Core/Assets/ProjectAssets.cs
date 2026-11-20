@@ -1,15 +1,17 @@
 using System.Security.Cryptography;
+using XDesigner.Core.Frameworks;
 
 namespace XDesigner.Core.Assets;
 
-/// <summary>An image made available to the project: its XAML path (<c>/Assets/logo.png</c>) and file.</summary>
+/// <summary>An image made available to the project: its XAML path (<c>/Assets/logo.png</c>, <c>ms-appx:///Assets/logo.png</c>) and file.</summary>
 /// <param name="Copied">False when the image was already in the project (same name and content), so nothing changed on disk.</param>
 public sealed record AssetImport(string XamlPath, string FilePath, bool Copied);
 
 /// <summary>
 /// The project's images (§12): listed from <c>Assets/</c>, imported by copying into it (an identical file is reused,
-/// a different file with the same name gets a numbered name), and addressed in XAML as <c>/Assets/{file}</c>, which
-/// the project's <c>&lt;AvaloniaResource Include="Assets\**" /&gt;</c> packages into the assembly.
+/// a different file with the same name gets a numbered name), and addressed in XAML as the framework writes project
+/// files: <c>/Assets/{file}</c> in Avalonia (an AvaloniaResource packaged into the assembly), <c>ms-appx:///Assets/{file}</c>
+/// in WinUI (a Content file next to the app).
 /// </summary>
 public static class ProjectAssets
 {
@@ -21,7 +23,7 @@ public static class ProjectAssets
     public static bool IsImage(string path) => ImageExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
 
     /// <summary>XAML paths of the images under <c>Assets/</c>, sorted.</summary>
-    public static IReadOnlyList<string> ListImages(string projectDirectory)
+    public static IReadOnlyList<string> ListImages(string projectDirectory, FrameworkProfile? profile = null)
     {
         var folder = Path.Combine(projectDirectory, FolderName);
         if (!Directory.Exists(folder))
@@ -31,18 +33,23 @@ public static class ProjectAssets
 
         return Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
             .Where(IsImage)
-            .Select(f => ToXamlPath(projectDirectory, f))
+            .Select(f => ToXamlPath(projectDirectory, f, profile))
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    /// <summary><c>/Assets/icons/save.png</c> for a file inside the project.</summary>
-    public static string ToXamlPath(string projectDirectory, string filePath) =>
-        "/" + Path.GetRelativePath(projectDirectory, filePath).Replace('\\', '/');
+    /// <summary><c>/Assets/icons/save.png</c> (<c>ms-appx:///Assets/icons/save.png</c> in WinUI) for a file inside the project.</summary>
+    public static string ToXamlPath(string projectDirectory, string filePath, FrameworkProfile? profile = null) =>
+        (profile?.ResourceUriScheme == "ms-appx" ? "ms-appx:///" : "/") + Path.GetRelativePath(projectDirectory, filePath).Replace('\\', '/');
 
-    /// <summary>The file a project-relative XAML path (<c>/Assets/x.png</c>) points to, or null for anything else.</summary>
+    /// <summary>The file a project-relative XAML path (<c>/Assets/x.png</c>, <c>ms-appx:///Assets/x.png</c>) points to, or null for anything else.</summary>
     public static string? ToFilePath(string projectDirectory, string? xamlPath)
     {
+        if (xamlPath?.StartsWith("ms-appx:///", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            xamlPath = xamlPath["ms-appx://".Length..];
+        }
+
         if (string.IsNullOrWhiteSpace(xamlPath) || !xamlPath.StartsWith('/') || xamlPath.StartsWith("//", StringComparison.Ordinal))
         {
             return null;
@@ -54,13 +61,13 @@ public static class ProjectAssets
     }
 
     /// <summary>Copies <paramref name="sourcePath"/> into <c>Assets/</c> unless it's there already.</summary>
-    public static AssetImport Import(string projectDirectory, string sourcePath)
+    public static AssetImport Import(string projectDirectory, string sourcePath, FrameworkProfile? profile = null)
     {
         var source = Path.GetFullPath(sourcePath);
         var folder = Path.Combine(Path.GetFullPath(projectDirectory), FolderName);
         if (source.StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
         {
-            return new AssetImport(ToXamlPath(projectDirectory, source), source, Copied: false);
+            return new AssetImport(ToXamlPath(projectDirectory, source, profile), source, Copied: false);
         }
 
         Directory.CreateDirectory(folder);
@@ -73,12 +80,12 @@ public static class ProjectAssets
             if (!File.Exists(target))
             {
                 File.Copy(source, target);
-                return new AssetImport(ToXamlPath(projectDirectory, target), target, Copied: true);
+                return new AssetImport(ToXamlPath(projectDirectory, target, profile), target, Copied: true);
             }
 
             if (Hash(target).SequenceEqual(hash))
             {
-                return new AssetImport(ToXamlPath(projectDirectory, target), target, Copied: false);
+                return new AssetImport(ToXamlPath(projectDirectory, target, profile), target, Copied: false);
             }
         }
     }

@@ -81,8 +81,9 @@ public sealed class FrameworkTests : IDisposable
     [Fact]
     public void UnsupportedFrameworks_AreExplained()
     {
-        var winui = new DetectedFramework(FrameworkFamily.WinUI, null, FrameworkProfile.WinUI3);
-        Assert.Contains("coming in a later version", winui.Problem("Shop"));
+        var maui = new DetectedFramework(FrameworkFamily.Maui, new Version(10, 0), FrameworkProfile.Maui10);
+        Assert.Contains("coming in a later version", maui.Problem("Shop"));
+        Assert.Null(new DetectedFramework(FrameworkFamily.WinUI, null, FrameworkProfile.WinUI3).Problem("Shop"));
         Assert.Null(new DetectedFramework(FrameworkFamily.Avalonia, new Version(12, 1), FrameworkProfile.Avalonia12).Problem("Shop"));
         Assert.Contains("doesn't use a UI framework", DetectedFramework.Unknown.Problem("Shop"));
     }
@@ -120,7 +121,7 @@ public sealed class FrameworkTests : IDisposable
     public void Profiles_KnowTheirNamespacesAndHosts()
     {
         Assert.All(FrameworkProfile.All, p => Assert.Equal(p, FrameworkProfile.For(p.Id)));
-        Assert.Equal([FrameworkId.Avalonia12, FrameworkId.Avalonia11], FrameworkProfile.All.Where(p => p.IsSupported).Select(p => p.Id));
+        Assert.Equal([FrameworkId.Avalonia12, FrameworkId.Avalonia11, FrameworkId.WinUI3], FrameworkProfile.All.Where(p => p.IsSupported).Select(p => p.Id));
         Assert.Equal(FrameworkProfile.Avalonia11, FrameworkProfile.For(FrameworkFamily.Avalonia, 11));
         Assert.Null(FrameworkProfile.For(FrameworkFamily.Avalonia, 10));
         Assert.Equal(FrameworkFamily.Maui, FrameworkProfile.FamilyOf(XNamespace.Get(FrameworkProfile.MauiNamespace)));

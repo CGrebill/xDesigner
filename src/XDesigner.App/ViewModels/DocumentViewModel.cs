@@ -140,7 +140,7 @@ public sealed partial class DocumentViewModel : ObservableObject
     public string? UserAssemblyPath => Project?.AssemblyPath;
 
     /// <summary>The render host this document needs: its framework version's, loading its project's assembly.</summary>
-    public HostKey HostKey => new(Xaml.Profile, UserAssemblyPath);
+    public HostKey HostKey => new(Xaml.Profile, UserAssemblyPath, ProjectDirectory);
 
     [ObservableProperty]
     public partial double Zoom { get; set; } = 1;
@@ -184,7 +184,8 @@ public sealed partial class DocumentViewModel : ObservableObject
     {
         get
         {
-            if (Project is not { AssemblyPath: not null } project || ProjectDirectory is not { } dir)
+            // WinUI documents need none: their host runs from the project's output, where ms-appx:/// finds the files.
+            if (Project is not { AssemblyPath: not null } project || ProjectDirectory is not { } dir || Xaml.Profile.ResourceUriScheme != "avares")
             {
                 return null;
             }

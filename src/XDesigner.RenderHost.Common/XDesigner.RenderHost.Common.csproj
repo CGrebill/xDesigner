@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>XDesigner.RenderHost</RootNamespace>
+    <Description>What every render host shares, whatever its UI framework: command-line options, exit codes, the pipe server, the startup watchdog and the PNG writer (§14).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="StreamJsonRpc" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\XDesigner.Protocol\XDesigner.Protocol.csproj" />
+  </ItemGroup>
+
+</Project>

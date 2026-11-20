@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Created with xDesigner: a WinUI 3 desktop app for Windows. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>$rootnamespace$</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WinUI has no AnyCPU build: x64 unless another platform is asked for (dotnet build -p:Platform=ARM64). -->
+    <Platforms>x64;ARM64</Platforms>
+    <Platform Condition="'$(Platform)' == '' Or '$(Platform)' == 'AnyCPU'">x64</Platform>
+    <RuntimeIdentifier>win-$(Platform.ToLowerInvariant())</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <!-- Carries the Windows App SDK runtime, so nothing else has to be installed. -->
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+$packaging$    <!-- Program.cs starts the app: an explicit Main instead of the generated one. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$windowsappsdkversion$" />
+  </ItemGroup>
+
+</Project>

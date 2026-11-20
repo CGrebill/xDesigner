@@ -35,7 +35,8 @@ if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
 Invoke-Checked "Publish" { dotnet publish src\XDesigner.App -c Release -o $publishDir -nologo -v:minimal }
 
 # One render host per framework version, in renderhosts\{folder} (FrameworkProfile.HostFolder/HostExecutable).
-$renderHosts = "renderhosts\avalonia12\XDesigner.RenderHost.Avalonia12.exe", "renderhosts\avalonia11\XDesigner.RenderHost.Avalonia11.exe"
+$renderHosts = "renderhosts\avalonia12\XDesigner.RenderHost.Avalonia12.exe", "renderhosts\avalonia11\XDesigner.RenderHost.Avalonia11.exe",
+    "renderhosts\winui3\XDesigner.RenderHost.WinUI.exe"
 foreach ($required in @("xDesigner.exe", "xDesigner.pri", "LICENSE.txt", "THIRD-PARTY-NOTICES.txt") + $renderHosts) {
     if (-not (Test-Path (Join-Path $publishDir $required))) { throw "The publish output has no $required." }
 }

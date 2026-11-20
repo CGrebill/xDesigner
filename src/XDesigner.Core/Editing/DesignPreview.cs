@@ -6,7 +6,7 @@ namespace XDesigner.Core.Editing;
 
 /// <summary>
 /// Design-only view state that changes what the surface shows without changing the file (§9.4): which tab of each
-/// TabControl is open. Selecting a tab (its header in the outline or on the surface) or anything inside one opens it,
+/// tab control (TabControl, TabView) is open. Selecting a tab (its header in the outline or on the surface) or anything inside one opens it,
 /// so controls can be dropped into any tab; the choice is remembered per TabControl.
 /// </summary>
 public sealed class DesignPreview
@@ -60,7 +60,7 @@ public sealed class DesignPreview
 
         foreach (var control in document.AllNodes.Where(n => IsTabControl(n, catalog) && (!_shownTab.TryGetValue(n.Id, out var tab) || document.FindById(tab) is null)))
         {
-            if (control.Element.Attribute("SelectedIndex") is null && ItemsEditing.Items(control.Element).Count > 0)
+            if (control.Element.Attribute("SelectedIndex") is null && TabsOf(control, document).Count > 0)
             {
                 Set(control.Id, "SelectedIndex", "0");
             }
@@ -70,7 +70,7 @@ public sealed class DesignPreview
         {
             if (document.FindById(controlId) is { } control && document.FindById(tabId) is { } tab)
             {
-                var index = ItemsEditing.Items(control.Element).IndexOf(tab.Element);
+                var index = TabsOf(control, document).IndexOf(tab.Element);
                 if (index >= 0)
                 {
                     Set(controlId, "SelectedIndex", index.ToString(CultureInfo.InvariantCulture));
@@ -87,9 +87,13 @@ public sealed class DesignPreview
         return result.ToDictionary(p => p.Key, p => (IReadOnlyDictionary<string, string>)p.Value);
     }
 
-    private static bool IsTabItem(ElementNode node, ControlCatalog catalog) =>
-        catalog.Resolve(node) is { } type ? catalog.IsA(type, "TabItem") : node.TypeName == "TabItem";
+    private static List<System.Xml.Linq.XElement> TabsOf(ElementNode control, XamlDocument document) =>
+        ItemsEditing.Items(control.Element, document.Profile.Tabs?.ItemsProperty ?? "Items");
 
-    private static bool IsTabControl(ElementNode node, ControlCatalog catalog) =>
-        catalog.Resolve(node) is { } type ? catalog.IsA(type, "TabControl") : node.TypeName == "TabControl";
+    private static bool IsTabItem(ElementNode node, ControlCatalog catalog) => IsBuiltIn(node, catalog, catalog.Profile.Tabs?.Item);
+
+    private static bool IsTabControl(ElementNode node, ControlCatalog catalog) => IsBuiltIn(node, catalog, catalog.Profile.Tabs?.Control);
+
+    private static bool IsBuiltIn(ElementNode node, ControlCatalog catalog, string? name) =>
+        name is not null && (catalog.Resolve(node) is { } type ? catalog.IsA(type, name) : node.TypeName == name);
 }

@@ -27,28 +27,45 @@ public sealed class ItemDraft(int? existingId, string text, bool textEditable = 
 /// <param name="ItemType">Element name of a new item: <c>ListBoxItem</c>, <c>TabItem</c>, <c>MenuItem</c>…</param>
 /// <param name="TextProperty"><c>Content</c> or <c>Header</c>.</param>
 /// <param name="Nested">Items can have sub-items (Menu, TreeView).</param>
-public sealed record ItemsKind(string ItemType, string TextProperty, bool Nested, string Noun);
+/// <param name="ItemsProperty">The content property holding the items (<c>Items</c>; WinUI's TabView has <c>TabItems</c>).</param>
+/// <param name="HasContentArea">A new item gets a Grid to drop controls into (tabs).</param>
+public sealed record ItemsKind(string ItemType, string TextProperty, bool Nested, string Noun, string ItemsProperty = "Items", bool HasContentArea = false);
 
 public static class ItemsEditing
 {
-    /// <summary>
-    /// The kind of items an Items control holds, or null when the editor doesn't support it. The table is the
-    /// framework's (§9.4); WinUI and MAUI get theirs with their render hosts.
-    /// </summary>
+    /// <summary>The kind of items an Items control holds, or null when the editor doesn't support it (§9.4).</summary>
     public static ItemsKind? KindOf(ControlCatalog catalog, ControlTypeInfo? type)
     {
-        if (type is null || catalog.Profile.Family != Frameworks.FrameworkFamily.Avalonia)
+        if (type is null)
         {
             return null;
         }
 
-        return true switch
+        if (catalog.Profile.Tabs is { } tabs && catalog.IsA(type, tabs.Control))
         {
-            _ when catalog.IsA(type, "TabControl") => new("TabItem", "Header", false, "tab"),
-            _ when catalog.IsA(type, "Menu") || catalog.IsA(type, "ContextMenu") => new("MenuItem", "Header", true, "menu item"),
-            _ when catalog.IsA(type, "TreeView") => new("TreeViewItem", "Header", true, "node"),
-            _ when catalog.IsA(type, "ComboBox") => new("ComboBoxItem", "Content", false, "item"),
-            _ when catalog.IsA(type, "ListBox") => new("ListBoxItem", "Content", false, "item"),
+            return new(tabs.Item, "Header", false, "tab", tabs.ItemsProperty, HasContentArea: true);
+        }
+
+        return catalog.Profile.Family switch
+        {
+            Frameworks.FrameworkFamily.Avalonia => true switch
+            {
+                _ when catalog.IsA(type, "Menu") || catalog.IsA(type, "ContextMenu") => new("MenuItem", "Header", true, "menu item"),
+                _ when catalog.IsA(type, "TreeView") => new("TreeViewItem", "Header", true, "node"),
+                _ when catalog.IsA(type, "ComboBox") => new("ComboBoxItem", "Content", false, "item"),
+                _ when catalog.IsA(type, "ListBox") => new("ListBoxItem", "Content", false, "item"),
+                _ => null,
+            },
+            // WinUI's menus and trees aren't plain item lists (MenuBarItem.Items of MenuFlyoutItems, TreeView.RootNodes):
+            // they are edited in XAML.
+            Frameworks.FrameworkFamily.WinUI => true switch
+            {
+                _ when catalog.IsA(type, "ComboBox") => new("ComboBoxItem", "Content", false, "item"),
+                _ when catalog.IsA(type, "ListView") => new("ListViewItem", "Content", false, "item"),
+                _ when catalog.IsA(type, "GridView") => new("GridViewItem", "Content", false, "item"),
+                _ when catalog.IsA(type, "ListBox") => new("ListBoxItem", "Content", false, "item"),
+                _ => null,
+            },
             _ => null,
         };
     }
@@ -57,7 +74,7 @@ public static class ItemsEditing
     public static List<ItemDraft> Read(ElementNode control, ItemsKind kind)
     {
         var drafts = new List<ItemDraft>();
-        foreach (var item in Items(control.Element))
+        foreach (var item in Items(control.Element, kind.ItemsProperty))
         {
             var node = control.Document.NodeFor(item);
             var draft = DraftOf(node, kind);
@@ -72,12 +89,15 @@ public static class ItemsEditing
         return drafts;
     }
 
-    /// <summary>Item elements of an items control: object children, or those inside its <c>&lt;X.Items&gt;</c> element.</summary>
-    internal static List<XElement> Items(XElement control) =>
-        (ItemsElement(control) ?? control).Elements().Where(RenderCopyBuilder.IsObjectElement).ToList();
+    /// <summary>
+    /// Item elements of an items control: object children, or those inside its <c>&lt;X.Items&gt;</c> element (the
+    /// items property is the content property, so both are written).
+    /// </summary>
+    internal static List<XElement> Items(XElement control, string itemsProperty = "Items") =>
+        (ItemsElement(control, itemsProperty) ?? control).Elements().Where(RenderCopyBuilder.IsObjectElement).ToList();
 
-    internal static XElement? ItemsElement(XElement control) =>
-        control.Elements().FirstOrDefault(e => e.Name.LocalName == $"{control.Name.LocalName}.Items");
+    internal static XElement? ItemsElement(XElement control, string itemsProperty = "Items") =>
+        control.Elements().FirstOrDefault(e => e.Name.LocalName == $"{control.Name.LocalName}.{itemsProperty}");
 
     private static ItemDraft DraftOf(ElementNode item, ItemsKind kind)
     {
@@ -119,8 +139,8 @@ public sealed partial class DesignerActions
 
     private void ApplyLevel(ElementNode container, IReadOnlyList<ItemDraft> drafts, ItemsKind kind, List<IUndoableCommand> commands)
     {
-        var existing = ItemsEditing.Items(container.Element);
-        var into = ItemsEditing.ItemsElement(container.Element)?.Name;
+        var existing = ItemsEditing.Items(container.Element, kind.ItemsProperty);
+        var into = ItemsEditing.ItemsElement(container.Element, kind.ItemsProperty)?.Name;
         var ns = _document.Profile.DefaultNamespace;
 
         // Text changes on items that stay.
@@ -169,7 +189,7 @@ public sealed partial class DesignerActions
             for (var i = 0; i < elements.Count; i++)
             {
                 commands.Add(new InsertElementCommand(container.Id, elements[i].Element, i, "Edit items", into));
-                if (elements[i].IsNew && kind.ItemType == "TabItem")
+                if (elements[i].IsNew && kind.HasContentArea)
                 {
                     // A tab's content area, so controls can be dropped into the tab on the surface.
                     commands.Add(new InsertElementCommand(_document.NodeFor(elements[i].Element).Id, new XElement(ns + "Grid"), 0, "Edit items"));
@@ -181,7 +201,7 @@ public sealed partial class DesignerActions
         {
             foreach (var (draft, element, _) in elements)
             {
-                if (draft.Children.Count > 0 || ItemsEditing.Items(element).Count > 0)
+                if (draft.Children.Count > 0 || ItemsEditing.Items(element, kind.ItemsProperty).Count > 0)
                 {
                     ApplyLevel(_document.NodeFor(element), draft.Children, kind, commands);
                 }

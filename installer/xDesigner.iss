@@ -75,6 +75,7 @@ Name: "custom"; Description: "Choose which frameworks to design"; Flags: iscusto
 Name: "app"; Description: "xDesigner"; Types: full custom; Flags: fixed
 Name: "avalonia12"; Description: "Avalonia 12 renderer"; Types: full custom
 Name: "avalonia11"; Description: "Avalonia 11 renderer (projects on Avalonia 11.1 or later)"; Types: full
+Name: "winui3"; Description: "WinUI 3 renderer (Windows App SDK projects)"; Types: full
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -87,9 +88,10 @@ Type: filesandordirs; Name: "{app}\*"
 Source: "{#PublishDir}\*"; Excludes: "\renderhosts\*"; DestDir: "{app}"; Components: app; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PublishDir}\renderhosts\avalonia12\*"; DestDir: "{app}\renderhosts\avalonia12"; Components: avalonia12; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PublishDir}\renderhosts\avalonia11\*"; DestDir: "{app}\renderhosts\avalonia11"; Components: avalonia11; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PublishDir}\renderhosts\winui3\*"; DestDir: "{app}\renderhosts\winui3"; Components: winui3; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; Comment: "A visual designer for Avalonia UI"
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; Comment: "A visual designer for Avalonia UI and WinUI 3"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]

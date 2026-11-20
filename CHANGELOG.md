@@ -15,12 +15,18 @@ All notable changes to xDesigner are listed here. Versions follow [Semantic Vers
   or show a file in File Explorer.
 - **Error List** in Output: the last build's errors and warnings; double-click to go to one.
 - **View › Toolbox / Output** hide or show those panes; **View › Solution Explorer** (Ctrl+Alt+L) and **Error List**.
-- The installer lets you choose which renderers to install.
-- WinUI 3 and .NET MAUI projects are recognised and explained (designing them comes in a later version).
+- **WinUI 3.** WinUI 3 projects (Windows App SDK, unpackaged or packaged) can be designed: windows, pages and user
+  controls are drawn by WinUI itself, with the project's App.xaml resources, images and custom controls. The toolbox
+  lists WinUI's controls; grid rows and columns are written as `<Grid.RowDefinitions>`; TabView, ComboBox and ListView
+  items have the collection editor; images are added as `ms-appx:///Assets/…` content. New project creates a WinUI 3 app
+  (unpackaged or packaged), Project › Add page… a page. Builds pass the platform WinUI needs, and Run starts a packaged
+  app as a registered package (with Developer Mode on) or its exe directly.
+- The installer lets you choose which renderers to install (Avalonia 12, Avalonia 11, WinUI 3).
+- .NET MAUI projects are recognised and explained (designing them comes in a later version).
 
 ### Changed
-- Render hosts live in `renderhosts\{framework}` next to the app (one per framework version); the render protocol is
-  version 6.
+- Render hosts live in `renderhosts\{framework}` next to the app (one per framework version) and share their
+  framework-free code (`XDesigner.RenderHost.Common`); the render protocol is version 6.
 
 ### Fixed (from a full code review of 1.0.0)
 - A property value still being typed was applied to the wrong file when another file was opened or dropped on the
