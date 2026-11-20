@@ -25,9 +25,12 @@ public sealed partial class MainWindow
         StopButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         StopMenuItem.IsEnabled = running;
         AddWindowMenuItem.IsEnabled = AddUserControlMenuItem.IsEnabled = project is not null;
-        AddPageMenuItem.Visibility = project is not null && ViewModel.ProjectProfile is { } profile && ProjectTemplates.ItemKindsFor(profile).Contains(ItemKind.Page)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        var kinds = project is not null && ViewModel.ProjectProfile is { } profile ? ProjectTemplates.ItemKindsFor(profile) : [ItemKind.Window, ItemKind.UserControl];
+        AddPageMenuItem.Visibility = kinds.Contains(ItemKind.Page) ? Visibility.Visible : Visibility.Collapsed;
+        AddWindowMenuItem.Visibility = kinds.Contains(ItemKind.Window) ? Visibility.Visible : Visibility.Collapsed;
+        var maui = ViewModel.ProjectProfile?.Family == Core.Frameworks.FrameworkFamily.Maui;
+        AddPageMenuItem.Text = maui ? "Add content page…" : "Add page…";
+        AddUserControlMenuItem.Text = maui ? "Add content view…" : "Add user control…";
     }
 
     private async void Run_Click(object sender, RoutedEventArgs e)
@@ -63,12 +66,17 @@ public sealed partial class MainWindow
         void Describe()
         {
             var selected = frameworks[Math.Max(0, framework.SelectedIndex)];
-            var winui = selected.Family == Core.Frameworks.FrameworkFamily.WinUI;
-            packaged.Visibility = winui ? Visibility.Visible : Visibility.Collapsed;
-            description.Text = winui
-                ? $"A Windows desktop app ({selected.DisplayName}, Windows App SDK {selected.TemplateVersion}, .NET 10) with an empty main window."
-                  + (packaged.IsOn ? " Running a packaged app from xDesigner registers it with Windows, which needs Developer Mode." : "")
-                : $"A desktop app for Windows, macOS and Linux ({selected.DisplayName}, .NET 10) with an empty main window.";
+            var canPackage = selected.Family is Core.Frameworks.FrameworkFamily.WinUI or Core.Frameworks.FrameworkFamily.Maui;
+            packaged.Visibility = canPackage ? Visibility.Visible : Visibility.Collapsed;
+            var packagedNote = canPackage && packaged.IsOn ? " Running a packaged app from xDesigner registers it with Windows, which needs Developer Mode." : "";
+            description.Text = selected.Family switch
+            {
+                Core.Frameworks.FrameworkFamily.WinUI =>
+                    $"A Windows desktop app ({selected.DisplayName}, Windows App SDK {selected.TemplateVersion}, .NET 10) with an empty main window.{packagedNote}",
+                Core.Frameworks.FrameworkFamily.Maui =>
+                    $"A .NET MAUI app ({selected.DisplayName}, .NET {selected.MajorVersion}) with an empty main page, built for Windows (add Android, iOS or macOS later).{packagedNote}",
+                _ => $"A desktop app for Windows, macOS and Linux ({selected.DisplayName}, .NET 10) with an empty main window.",
+            };
         }
 
         framework.SelectionChanged += (_, _) => Describe();
@@ -139,7 +147,7 @@ public sealed partial class MainWindow
         _lastProjectsFolder = location.Text.Trim();
         Directory.CreateDirectory(_lastProjectsFolder);
         var chosen = frameworks[Math.Max(0, framework.SelectedIndex)];
-        var asPackage = chosen.Family == Core.Frameworks.FrameworkFamily.WinUI && packaged.IsOn;
+        var asPackage = chosen.Family is Core.Frameworks.FrameworkFamily.WinUI or Core.Frameworks.FrameworkFamily.Maui && packaged.IsOn;
         if (await ViewModel.CreateProjectAsync(_lastProjectsFolder, name.Text.Trim(), title.Text, chosen, asPackage) is { } failed)
         {
             ShowNotification(NotifyKind.Error, $"Couldn't create the project: {failed}");
@@ -176,11 +184,12 @@ public sealed partial class MainWindow
         var profile = ViewModel.ProjectProfile ?? Core.Frameworks.FrameworkProfile.Avalonia12;
         var extension = profile.FileExtension;
         var folder = ViewModel.DefaultItemFolder;
+        var maui = profile.Family == Core.Frameworks.FrameworkFamily.Maui;
         var (label, suggested) = kind switch
         {
             ItemKind.Window => ("window", "SecondWindow"),
-            ItemKind.Page => ("page", "SecondPage"),
-            _ => ("user control", "MyControl"),
+            ItemKind.Page => (maui ? "content page" : "page", "SecondPage"),
+            _ => (maui ? "content view" : "user control", maui ? "MyView" : "MyControl"),
         };
         var name = new TextBox { Header = "Class name", Text = suggested, MinWidth = 360 };
         var where = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };

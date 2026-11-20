@@ -3,15 +3,16 @@ using XDesigner.Core.Frameworks;
 
 namespace XDesigner.Core.Assets;
 
-/// <summary>An image made available to the project: its XAML path (<c>/Assets/logo.png</c>, <c>ms-appx:///Assets/logo.png</c>) and file.</summary>
+/// <summary>An image made available to the project: its XAML path (<c>/Assets/logo.png</c>, <c>ms-appx:///Assets/logo.png</c>, <c>logo.png</c>) and file.</summary>
 /// <param name="Copied">False when the image was already in the project (same name and content), so nothing changed on disk.</param>
 public sealed record AssetImport(string XamlPath, string FilePath, bool Copied);
 
 /// <summary>
-/// The project's images (§12): listed from <c>Assets/</c>, imported by copying into it (an identical file is reused,
-/// a different file with the same name gets a numbered name), and addressed in XAML as the framework writes project
-/// files: <c>/Assets/{file}</c> in Avalonia (an AvaloniaResource packaged into the assembly), <c>ms-appx:///Assets/{file}</c>
-/// in WinUI (a Content file next to the app).
+/// The project's images (§12): listed from the framework's images folder (<see cref="FrameworkProfile.AssetsFolder"/>),
+/// imported by copying into it (an identical file is reused, a different file with the same name gets a numbered name),
+/// and addressed in XAML as the framework writes project files: <c>/Assets/{file}</c> in Avalonia (an AvaloniaResource
+/// packaged into the assembly), <c>ms-appx:///Assets/{file}</c> in WinUI (a Content file next to the app), and the bare
+/// file name in MAUI (a MauiImage in <c>Resources\Images</c>, whose names must be lowercase letters, digits and <c>_</c>).
 /// </summary>
 public static class ProjectAssets
 {
@@ -22,29 +23,47 @@ public static class ProjectAssets
 
     public static bool IsImage(string path) => ImageExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
 
-    /// <summary>XAML paths of the images under <c>Assets/</c>, sorted.</summary>
+    /// <summary>XAML paths of the project's images, sorted.</summary>
     public static IReadOnlyList<string> ListImages(string projectDirectory, FrameworkProfile? profile = null)
     {
-        var folder = Path.Combine(projectDirectory, FolderName);
+        var folder = Path.Combine(projectDirectory, FolderOf(profile));
         if (!Directory.Exists(folder))
         {
             return [];
         }
 
-        return Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
+        return Directory.EnumerateFiles(folder, "*", IsMaui(profile) ? SearchOption.TopDirectoryOnly : SearchOption.AllDirectories)
             .Where(IsImage)
             .Select(f => ToXamlPath(projectDirectory, f, profile))
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    /// <summary><c>/Assets/icons/save.png</c> (<c>ms-appx:///Assets/icons/save.png</c> in WinUI) for a file inside the project.</summary>
-    public static string ToXamlPath(string projectDirectory, string filePath, FrameworkProfile? profile = null) =>
-        (profile?.ResourceUriScheme == "ms-appx" ? "ms-appx:///" : "/") + Path.GetRelativePath(projectDirectory, filePath).Replace('\\', '/');
-
-    /// <summary>The file a project-relative XAML path (<c>/Assets/x.png</c>, <c>ms-appx:///Assets/x.png</c>) points to, or null for anything else.</summary>
-    public static string? ToFilePath(string projectDirectory, string? xamlPath)
+    /// <summary>
+    /// <c>/Assets/icons/save.png</c> for a file inside the project; <c>ms-appx:///Assets/icons/save.png</c> in WinUI;
+    /// <c>save.png</c> in MAUI.
+    /// </summary>
+    public static string ToXamlPath(string projectDirectory, string filePath, FrameworkProfile? profile = null)
     {
+        if (IsMaui(profile))
+        {
+            return Path.GetFileName(filePath);
+        }
+
+        return (profile?.ResourceUriScheme == "ms-appx" ? "ms-appx:///" : "/") + Path.GetRelativePath(projectDirectory, filePath).Replace('\\', '/');
+    }
+
+    /// <summary>
+    /// The file a project-relative XAML path (<c>/Assets/x.png</c>, <c>ms-appx:///Assets/x.png</c>; in MAUI a bare <c>x.png</c>)
+    /// points to, or null for anything else.
+    /// </summary>
+    public static string? ToFilePath(string projectDirectory, string? xamlPath, FrameworkProfile? profile = null)
+    {
+        if (IsMaui(profile) && xamlPath is { Length: > 0 } && !xamlPath.Contains('/') && !xamlPath.Contains('\\') && xamlPath != ".." && !xamlPath.Contains(':'))
+        {
+            return Path.Combine(Path.GetFullPath(projectDirectory), FolderOf(profile), xamlPath);
+        }
+
         if (xamlPath?.StartsWith("ms-appx:///", StringComparison.OrdinalIgnoreCase) == true)
         {
             xamlPath = xamlPath["ms-appx://".Length..];
@@ -60,11 +79,11 @@ public static class ProjectAssets
         return full.StartsWith(root, StringComparison.OrdinalIgnoreCase) ? full : null; // never outside the project folder
     }
 
-    /// <summary>Copies <paramref name="sourcePath"/> into <c>Assets/</c> unless it's there already.</summary>
+    /// <summary>Copies <paramref name="sourcePath"/> into the images folder unless it's there already.</summary>
     public static AssetImport Import(string projectDirectory, string sourcePath, FrameworkProfile? profile = null)
     {
         var source = Path.GetFullPath(sourcePath);
-        var folder = Path.Combine(Path.GetFullPath(projectDirectory), FolderName);
+        var folder = Path.Combine(Path.GetFullPath(projectDirectory), FolderOf(profile));
         if (source.StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
         {
             return new AssetImport(ToXamlPath(projectDirectory, source, profile), source, Copied: false);
@@ -72,11 +91,16 @@ public static class ProjectAssets
 
         Directory.CreateDirectory(folder);
         var stem = Path.GetFileNameWithoutExtension(source);
+        if (IsMaui(profile))
+        {
+            stem = MauiImageName(stem);
+        }
+
         var extension = Path.GetExtension(source).ToLowerInvariant();
         var hash = Hash(source);
         for (var n = 1; ; n++)
         {
-            var target = Path.Combine(folder, n == 1 ? stem + extension : $"{stem}-{n}{extension}");
+            var target = Path.Combine(folder, n == 1 ? stem + extension : $"{stem}{(IsMaui(profile) ? "_" : "-")}{n}{extension}");
             if (!File.Exists(target))
             {
                 File.Copy(source, target);
@@ -89,6 +113,17 @@ public static class ProjectAssets
             }
         }
     }
+
+    /// <summary>A name MAUI accepts for an image: lowercase letters, digits and <c>_</c>, starting with a letter (<c>My Logo-2</c> → <c>my_logo_2</c>).</summary>
+    internal static string MauiImageName(string stem)
+    {
+        var name = new string(stem.ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) ? c : '_').ToArray()).Trim('_');
+        return name.Length == 0 || !char.IsAsciiLetter(name[0]) ? "image_" + name : name;
+    }
+
+    private static bool IsMaui(FrameworkProfile? profile) => profile?.Family == FrameworkFamily.Maui;
+
+    private static string FolderOf(FrameworkProfile? profile) => profile?.AssetsFolder ?? FolderName;
 
     private static byte[] Hash(string path)
     {

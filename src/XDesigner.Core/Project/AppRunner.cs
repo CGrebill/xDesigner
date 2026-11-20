@@ -59,6 +59,12 @@ public sealed class AppRunner : IDisposable
             args.Add($"--property:Platform={platform}");
         }
 
+        if (project.BuildFramework is { } framework)
+        {
+            args.Add("-f");
+            args.Add(framework);
+        }
+
         return Launch(ProcessRunner.CreateStartInfo("dotnet", args, project.Directory), onLine);
     }
 

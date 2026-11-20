@@ -148,6 +148,6 @@ internal sealed class OriginalStartTag
             return XNamespace.Xml + local;
         }
 
-        return (element.GetNamespaceOfPrefix(prefix) ?? XNamespace.None) + local;
+        return (element.NamespaceOf(prefix) ?? XNamespace.None) + local;
     }
 }

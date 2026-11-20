@@ -5,7 +5,7 @@ How xDesigner works, for contributors. Code comments refer to the sections here 
 ## 1. Purpose
 
 xDesigner is a WinForms-style visual designer for C# UI frameworks: today [Avalonia UI](https://avaloniaui.net/) 11 and
-12 and WinUI 3 (Windows App SDK, packaged or unpackaged); .NET MAUI is recognised and comes next. You drag controls from a toolbox onto a form, edit them in a
+12, WinUI 3 (Windows App SDK, packaged or unpackaged) and .NET MAUI 10 and 11 (as they look on Windows). You drag controls from a toolbox onto a form, edit them in a
 properties window, double-click to create event handlers, and write only C#: the designer never shows XAML, it writes
 it. It opens whole solutions (projects of different frameworks side by side, each drawn by its own framework), designs
 their Windows and UserControls, creates projects, and builds and runs them.
@@ -72,13 +72,15 @@ targets; Avalonia versions before 11.1; running the designer itself on anything 
 | `XDesigner.RenderHost.Avalonia` (`…Avalonia12.csproj`) | net10.0 exe, win-x64 | Common, Avalonia 12 (Headless, Skia, Markup.Xaml.Loader, Themes.Fluent, Fonts.Inter) |
 | `XDesigner.RenderHost.Avalonia11` | net10.0 exe, win-x64 | The same source, `AVALONIA11` defined, Avalonia 11.3 (`VersionOverride`) |
 | `XDesigner.RenderHost.WinUI` | net10.0-windows10.0.19041.0 exe, x64, WinUI 3 | Common, Windows App SDK |
+| `XDesigner.RenderHost.Maui` (`…Maui11.csproj`) | net11.0-windows10.0.19041.0 MAUI app, x64 | Common, Microsoft.Maui.Controls 11 (with its Windows App SDK); links the WinUI host's surface and capture |
+| `XDesigner.RenderHost.Maui10` | net10.0-windows10.0.19041.0 MAUI app, x64 | The same source, Microsoft.Maui.Controls 10 (`VersionOverride`) |
 | `XDesigner.App` | net10.0-windows10.0.19041.0, x64, WinUI 3 | Core, Protocol, Windows App SDK, CommunityToolkit.Mvvm, CommunityToolkit.WinUI.Controls.Sizers |
-| `tests/*` | xUnit v3 | Core tests are pure; the render host tests start the real renderers against `samples/SampleAvaloniaApp` (12), `samples/SampleAvalonia11App` (11, from shared sources) and `samples/SampleWinUIApp` (WinUI, out of process) |
+| `tests/*` | xUnit v3 | Core tests are pure; the render host tests start the real renderers against `samples/SampleAvaloniaApp` (12), `samples/SampleAvalonia11App` (11, from shared sources), `samples/SampleWinUIApp` (WinUI) and `samples/SampleMauiApp` (MAUI 10 and 11, one project built for both), the last two out of process |
 
 Core and Protocol reference no UI framework, so editing logic is unit-testable and a renderer's framework version never
 leaks into the app. The app doesn't reference the render hosts: a build target copies each host's output into
 `renderhosts\{folder}\` next to the app, and publishing publishes them there self-contained (§17). Package versions are
-central in `Directory.Packages.props` (`AvaloniaVersion`, `Avalonia11Version`, `WindowsAppSdkVersion`). Templates and the toolbox lists are
+central in `Directory.Packages.props` (`AvaloniaVersion`, `Avalonia11Version`, `WindowsAppSdkVersion`, `Maui11Version`, `Maui10Version`). Templates and the toolbox lists are
 embedded resources of Core (`Core/Templates`, `Core/Toolbox/toolbox.{family}.json`).
 
 ## 4. Protocol (`XDesigner.Protocol`)
@@ -134,6 +136,13 @@ The framework's controls use the default namespace (the document profile's `Defa
 `xmlns:{prefix}="using:{ClrNamespace}"` on the root the first time they're used (`local` for the project's namespace,
 otherwise the last namespace segment). Design-time attributes use `d:` (the profile's `DesignNamespace`) with
 `mc:Ignorable`; `x:` is the profile's XAML namespace (2006, or 2009 for MAUI). Names are read under either `x:` URI.
+MAUI writes custom-control namespaces as `clr-namespace:{ClrNamespace};assembly={Assembly}`.
+
+**Implicit namespaces.** .NET MAUI 11 files may declare no namespaces at all (`<ContentPage x:Class="…">`): its compiler
+supplies MAUI's default namespace and `x:`. `ImplicitNamespaces.Parse` reads a file whose root has no namespace (or an
+undeclared prefix) with those predeclared and annotates the document; prefix lookups (`PrefixOf`, `NamespaceOf`,
+`DefaultNamespaceOf`) know them, so the writer writes `x:Name` and unprefixed MAUI elements as the file has them and no
+declaration is ever added. The render copy declares them, since MAUI's runtime loader needs them.
 
 ### 5.4 Render copy
 `BuildRenderCopy` clones the document, adds `dsn:DesignId.Value="{id}"` to every object element, and applies view-only
@@ -176,6 +185,11 @@ wrap in), items, grid definitions and design size; each builds one composite com
 | Items controls | an item |
 
 Moving to another container removes the attached properties of the old one. Alt keeps the current parent.
+
+Placement code uses the Avalonia/WinUI names above; the profile's `LayoutVocabulary` writes and reads them in the
+document's own spelling. For MAUI: `WidthRequest`/`HeightRequest`, `HorizontalOptions`/`VerticalOptions` with
+`Start`/`Fill`, and an AbsoluteLayout (reported as a Canvas) positions with one `AbsoluteLayout.LayoutBounds="x,y,w,h"`
+whose size part is kept (and resized when it sets a size). Avalonia and WinUI documents come out byte for byte as before.
 
 ### 7.2 Toolbox defaults
 `toolbox.{family}.json` (one per framework family, `FrameworkProfile.ToolboxResource`; `toolbox.avalonia.json` today)
@@ -291,8 +305,9 @@ Undo removes only the XAML link; the method stays. Renaming or deleting a contro
 `.csproj`, `.sln` or `.slnx` opens as a `SolutionModel` (a project on its own is a solution of one): every C# project is
 evaluated in parallel with `dotnet msbuild -getProperty` (TargetPath, AssemblyName, RootNamespace, TargetFramework,
 OutputType; a multi-targeted project is read for its desktop framework, else its Windows one; a WinUI project without a
-platform of its own for this machine's, `x64` or `ARM64`, since WinUI has no AnyCPU build, and whether it is packaged,
-from `WindowsPackageType`), and `FrameworkDetector`
+platform of its own for this machine's, `x64` or `ARM64`, since WinUI has no AnyCPU build; a MAUI project for its
+Windows target framework, which becomes its `BuildFramework`; and whether a WinUI or MAUI app is packaged, from
+`WindowsPackageType`), and `FrameworkDetector`
 finds each project's framework and version. Projects may mix frameworks and versions; each document belongs to the
 innermost project containing it and is drawn by that project's framework version. The startup project (what Run starts,
 what Project ▸ Add adds to) is the first designable app, and can be changed in Solution Explorer. A file opened on its
@@ -303,15 +318,16 @@ with English output, no logo, no telemetry and the classic logger, so its output
 ### 11.2 Build
 `dotnet build` of the solution (or the single project) in its folder (its `global.json` picks the SDK), output streamed
 to Output › Build, errors and warnings parsed into Output › Error List (double-click one to go to it). WinUI projects
-are built with their platform (`-p:Platform=x64`), and a solution that contains one is built project by project
+are built with their platform (`-p:Platform=x64`) and MAUI projects for Windows only (`-f net11.0-windows…`, so no
+Android or iOS workload is needed); a solution that contains either is built project by project
 (`SolutionModel.BuildSteps`), since a solution's platform mapping rarely gives WinUI a platform. Builds run on
 open, on Rebuild and before Run; unsaved files of the solution are saved first. A successful build restarts the
 renderers of the projects whose assemblies changed. Because the renderer loads project assemblies from memory, builds outside the
 designer (VS Code, Visual Studio) never hit locked files, and the designer reloads after them.
 
 ### 11.3 Run
-Save, build, then `AppRunner`: `dotnet run --no-build` (WinUI with `--property:Platform`); output to Output › Run;
-Stop kills the process tree. A packaged WinUI app runs as Visual Studio deploys it: its build output (a loose package
+Save, build, then `AppRunner`: `dotnet run --no-build` (WinUI with `--property:Platform`, MAUI with `-f`); output to
+Output › Run; Stop kills the process tree. A packaged WinUI or MAUI app runs as Visual Studio deploys it: its build output (a loose package
 layout with `AppxManifest.xml`) is registered (`Add-AppxPackage -Register`) and activated by its app user model id
 through `IApplicationActivationManager`, which returns the process to watch and stop; its console output isn't
 captured. Registering an unsigned package needs Developer Mode (read from the registry, never changed); without it
@@ -319,16 +335,18 @@ the packaged build's exe is started directly, without package identity, and the 
 instance; stopped before builds and when the designer closes.
 
 ### 11.4 New project
-A framework version (Avalonia 12 or 11, WinUI 3 unpackaged or packaged), a name, a folder and a title create a desktop
-app from Core's embedded templates (no `dotnet new`; both Avalonia versions share `AvaloniaApp`, with the profile's
-`TemplateVersion`; WinUI has `WinUIApp`): a csproj with an `Assets` item, `Program.cs` with an explicit `Main` (WinUI:
-`DISABLE_XAML_GENERATED_MAIN`), `App` and `MainWindow` with code-behind, `app.manifest`, `global.json` and
-`.gitignore`; a packaged WinUI app also gets `Package.appxmanifest` and generated logo PNGs. It is then built and its
-main window opened.
+A framework version (Avalonia 12 or 11, WinUI 3 or .NET MAUI 11 or 10, the last two unpackaged or packaged), a name, a
+folder and a title create a desktop app from Core's embedded templates (no `dotnet new`; both Avalonia versions share
+`AvaloniaApp`, with the profile's `TemplateVersion`; WinUI has `WinUIApp`, MAUI `MauiApp`): a csproj with an images
+item, `Program.cs` with an explicit `Main` (WinUI and MAUI: `DISABLE_XAML_GENERATED_MAIN`), `App` and `MainWindow` (MAUI:
+`MauiProgram`, `MainPage`, and the Windows `App` in `Platforms\Windows`) with code-behind, `app.manifest`, `global.json`
+and `.gitignore`; a packaged app also gets `Package.appxmanifest` (WinUI with generated logo PNGs, MAUI with a
+`MauiIcon` its build turns into them). A MAUI app targets Windows only. It is then built and its main window opened.
 
 ### 11.5 New items
 Add window / Add user control (and Add page in WinUI) create `{Name}.axaml` (`.xaml` in WinUI) and its code-behind in
-the project's namespace from the framework's item templates (`Templates/Items`, `Templates/WinUIItems`) and open them.
+the project's namespace from the framework's item templates (`Templates/Items`, `Templates/WinUIItems`,
+`Templates/MauiItems`) and open them. MAUI offers a content page and a content view (windows are made in code).
 
 ### 11.6 File watching
 Open `.axaml` files are watched. A change on disk that differs from what the designer last loaded or saved reloads
@@ -342,8 +360,10 @@ the framework's Assets item to the project if nothing covers Assets (a text edit
 for byte), sets the property, and rebuilds without saving other files, so the renderer has the image. Avalonia:
 `<AvaloniaResource Include="Assets\**" />` and `/Assets/{file}`. WinUI: `<Content Include="Assets\**"
 Exclude="@(Content)" CopyToOutputDirectory="PreserveNewest" />` (the exclusion keeps files the project already lists,
-such as Visual Studio's logos, from being packaged twice) and `ms-appx:///Assets/{file}`. Asset paths that would
-resolve outside the project are rejected. Files outside a project get a message instead.
+such as Visual Studio's logos, from being packaged twice) and `ms-appx:///Assets/{file}`. MAUI: the images folder is
+`Resources\Images` (the profile's `AssetsFolder`), `<MauiImage Include="Resources\Images\*" />`, the bare file name, and
+imported files renamed to the lowercase letters, digits and `_` MAUI requires. Asset paths that would resolve outside
+the project are rejected. Files outside a project get a message instead.
 
 ## 13. Clipboard (`Core/Editing/DesignerActions.Clipboard.cs`)
 Copy writes the top-most selected elements, re-indented, inside an `<xd:Fragment>` with the namespace declarations they
@@ -356,10 +376,11 @@ another document, drops attached properties of other panel kinds and offsets pos
 ### 14.0 One host per framework version
 `XDesigner.RenderHost.Avalonia` is built twice: against Avalonia 12 (`XDesigner.RenderHost.Avalonia12.exe`) and, with
 `AVALONIA11` defined for the few API differences, against Avalonia 11.3 (`XDesigner.RenderHost.Avalonia11.exe`);
-Avalonia 11.1 and 11.2 projects run on the 11.3 host. `XDesigner.RenderHost.WinUI.exe` draws WinUI 3 (§14.5). What
-doesn't depend on a framework is in `XDesigner.RenderHost.Common`: the command line, the pipe server and its exit
-codes, the PNG writer and render-once output, the frame size limits (`FrameScale`) and C# type names for handlers.
-§14.1–14.4 describe the Avalonia host; §14.5 how the WinUI host differs.
+Avalonia 11.1 and 11.2 projects run on the 11.3 host. `XDesigner.RenderHost.WinUI.exe` draws WinUI 3 (§14.5), and
+`XDesigner.RenderHost.Maui11.exe`/`Maui10.exe` draw .NET MAUI (§14.6; one source built against each MAUI version, as
+each pins its own Windows App SDK). What doesn't depend on a framework is in `XDesigner.RenderHost.Common`: the command
+line, the pipe server and its exit codes, the PNG writer and render-once output, the frame size limits (`FrameScale`)
+and C# type names for handlers. §14.1–14.4 describe the Avalonia host; §14.5 and §14.6 how the others differ.
 
 ### 14.1 Startup
 `XDesigner.RenderHost.Avalonia{11|12}.exe --pipe {name} --parent-pid {pid} [--assembly {project dll}] [--no-user-app]` (also
@@ -418,6 +439,33 @@ that never shows a window:
   attached properties (Grid, Canvas, RelativePanel, VariableSizedWrapGrid, ToolTipService, ScrollViewer); events with
   `RoutedEvent` fields marked routed. Values come from `ReadLocalValue`/`GetValue`, so the source is Local or Default
   only. Fonts are read from the registry (WinUI has no font list).
+- **Shared code.** The surface (`RenderSurface`: the cloaked window and the one-at-a-time UI work queue) and the
+  capture (`FrameCapture`: the frame, waiting for layout, deferred work and images, `RenderTargetBitmap`) are compiled
+  into the MAUI hosts too, as linked source.
+
+### 14.6 MAUI hosts
+MAUI on Windows draws with WinUI, so the MAUI hosts reuse the WinUI host's approach, as MAUI apps of their own:
+- **Startup.** The host's WinUI Application is MAUI's (`MauiWinUIApplication`, so MAUI's WinUI resources and type
+  information are there). Its `CreateMauiApp()` runs the project's own `MauiProgram.CreateMauiApp()` (found by
+  reflection), so the project's App, styles, fonts and handlers draw the pages; without one (or with `--no-user-app`) a
+  plain `DesignApp`. MAUI's startup opens the App's main window: `WindowHider`, a thread-local CBT hook installed around
+  it, cloaks that window and refuses its activation, so it never appears or takes focus. Its window-scoped
+  `IMauiContext` is what pages are drawn with.
+- **Shadow folder.** As for WinUI, plus the project's resource index used as the host's (`{Project}.pri` copied over
+  `{Host}.pri`, `HostUsesProjectResourceIndex`): MAUI writes images as scale-qualified files (`logo.scale-200.png`) that
+  only the project's index maps `logo.png` to, and both apps keep their WinUI App at `Platforms\Windows\App.xaml`.
+- **Rendering.** `MauiSanitizer` gives files without namespaces (MAUI 11) MAUI's, gives `clr-namespace:` declarations
+  without an assembly the one the namespace is in (MAUI's compiler assumes the project's; its runtime loader would look
+  in MAUI's), and removes `x:Class`, event attributes and the `d:` namespace. The root's type is created and loaded with
+  `LoadFromXaml`, turned into WinUI elements with `ToPlatform(context)`, drawn with `FrameCapture` after MAUI's own image
+  loading has given each image its source, and the theme is set through `Application.UserAppTheme`. Layout adds up each
+  element's `Frame`; MAUI's Grid doesn't publish row and column sizes, so they are worked out from the definitions and
+  the children. AbsoluteLayout is reported as a Canvas, the stack layouts as StackPanels and FlexLayout as a WrapPanel.
+- **Metadata and values.** VisualElement types (and Window); content models from `[ContentProperty]` and base types (a
+  project's own ContentView or ContentPage is never a drop target); bindable properties (`{Name}Property` fields) and the
+  attached properties of Grid, AbsoluteLayout, FlexLayout, ToolTipProperties and SemanticProperties; LayoutOptions offered
+  as `Start`/`Center`/`End`/`Fill`; events with `object? sender`. Values use `IsSet`, so the source is Local or Default.
+  Fonts are the project's registered aliases (read from MAUI's font registrar) and then the installed ones.
 
 ## 15. App
 
@@ -438,7 +486,8 @@ the app is open.
 
 ### 15.2 Renderer management
 `RenderHostManager`: one host per `HostKey` (framework profile and project assembly; "no project" is one more), the
-profile's exe from `renderhosts\{HostFolder}\` (a WinUI host from a fresh shadow folder of the project's output, §14.5),
+profile's exe from `renderhosts\{HostFolder}\` (a WinUI or MAUI host from a fresh shadow folder of the project's
+output, §14.5, §14.6; folders left by a designer that was ended are removed when the next one starts),
 started on first use, restarted after a
 crash at most three times a minute (then Retry), restarted after a build that changed the assembly. Requests interrupted
 by a planned restart are sent once more to the new host. `RenderHostConnection` (Core) starts the process, connects,
@@ -468,15 +517,17 @@ level only when no text box has focus.
 | Unexpected exception | Reported (Output, notification, errors.log); the app keeps running |
 
 ## 17. Build and release
-`global.json` pins the .NET 10 SDK. `Directory.Build.props` sets the version, product metadata, nullable, the
+`global.json` pins the .NET 11 SDK (the MAUI 11 host needs it; it builds the .NET 10 projects too), and the MAUI
+workload for Windows is needed for the MAUI hosts and sample. `Directory.Build.props` sets the version, product metadata, nullable, the
 recommended analyzers and code-style enforcement, and treats warnings as errors in Release. The app is unpackaged and
 self-contained (Windows App SDK included), x64 only. Release publishing (`dotnet publish src/XDesigner.App -c Release`)
 is self-contained and ReadyToRun, and publishes each render host self-contained into `renderhosts\{folder}\`. The
 installer has one component per render host, so users can leave out frameworks they don't design. To keep it lean, the
 app and the WinUI host exclude the Windows App SDK's AI, ML, Search and Widgets parts, use the non-WPF build of
 `Microsoft.VisualStudio.Threading` (its Windows build would pull in all of WPF; `build\VsThreadingWithoutWpf.targets`),
-and nothing publishes `.pdb` files. The WinUI host is built and published for x64 (the app's `RenderHostProject` items
-carry each host's platform).
+and nothing publishes `.pdb` files. The WinUI and MAUI hosts are built and published for x64 (the app's
+`RenderHostProject` items carry each host's platform). `.editorconfig` turns off CsWinRT1032 (collection expressions
+and trimming), which matters only to trimmed or AOT-compiled apps.
 `EnableMsixTooling` makes the unpackaged app's resources (`xDesigner.pri`, compiled XAML) part of the publish.
 
 `build\publish.ps1` builds, tests, publishes, checks the output and compiles `installer\xDesigner.iss` (Inno Setup): a
@@ -496,6 +547,9 @@ folder on upgrade, and whose uninstaller removes the install folder, shortcuts, 
 - `tests/XDesigner.RenderHost.WinUI.Tests`: the WinUI renderer over the pipe, started from a shadow folder of
   `samples/SampleWinUIApp` as the app starts it (a WinUI host can't run inside a test process): windows, pages, the
   project's controls, App.xaml resources and images, compiled-binding removal, layout, metadata, values, events, fonts.
+- `tests/XDesigner.RenderHost.Maui.Tests`: both MAUI renderers over the pipe, each from a shadow folder of
+  `samples/SampleMauiApp`'s build for its .NET version: the project's App, controls and images, MAUI 11 files without
+  namespaces, layout (Grid rows, AbsoluteLayout), errors, metadata, values, events.
 - Tests marked `Category=Slow` run `dotnet build` or MSBuild and need the SDK and NuGet packages.
 - The UI is checked by hand in the running app before a release: designing, events and Run on a new project; every
   panel and editor; preview; images; error and hang handling; external edits; install, upgrade and uninstall.

@@ -31,14 +31,14 @@ public sealed partial class DesignerActions
         {
             var element = root.Element;
             var d = _document.Profile.DesignNamespace;
-            var designPrefix = element.GetPrefixOfNamespace(d);
+            var designPrefix = element.PrefixOf(d);
             if (designPrefix is null)
             {
                 designPrefix = "d";
                 commands.Add(new SetAttributeCommand(root.Id, XNamespace.Xmlns + designPrefix, d.NamespaceName));
             }
 
-            var mcPrefix = element.GetPrefixOfNamespace(XamlNamespaces.MarkupCompatibility);
+            var mcPrefix = element.PrefixOf(XamlNamespaces.MarkupCompatibility);
             if (mcPrefix is null)
             {
                 mcPrefix = "mc";

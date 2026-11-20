@@ -1,7 +1,5 @@
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Xml.Linq;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Markup;
@@ -12,26 +10,17 @@ namespace XDesigner.RenderHost.Hosting;
 /// <summary>
 /// The render host's WinUI Application (§14.5). It has no App.xaml: it knows the WinUI controls library, its own design-id
 /// type and the user's types by aggregating their <see cref="IXamlMetadataProvider"/>s, merges the controls library's
-/// resources and the user's App.xaml resources, and owns the cloaked window every document renders in.
+/// resources and the user's App.xaml resources, and draws on a <see cref="RenderSurface"/>.
 /// The user's own App class never runs here (a process has one Application).
 /// </summary>
-[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "The Application lives as long as the process.")]
 internal sealed partial class HostApp : Application, IXamlMetadataProvider
 {
-    private const int DwmwaCloak = 13;
-    private const int GwlExStyle = -20;
-    private const int WsExToolWindow = 0x80;
-    private const int WsExNoActivate = 0x08000000;
-
     private readonly List<IXamlMetadataProvider> _providers = [];
     private readonly RenderHostOptions _options;
     private readonly Func<HostApp, Task<int>> _run;
     private readonly Action<int> _setExitCode;
-    private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly List<string> _warnings = [];
-    private DispatcherQueue? _dispatcher;
-    private Window? _window;
-    private Canvas? _surface;
+    private RenderSurface? _surface;
 
     /// <param name="run">What to do once set up (serve the pipe, or render once); returns the exit code.</param>
     public HostApp(RenderHostOptions options, Func<HostApp, Task<int>> run, Action<int> setExitCode)
@@ -56,11 +45,11 @@ internal sealed partial class HostApp : Application, IXamlMetadataProvider
 
     public IReadOnlyList<string> Warnings => _warnings;
 
-    /// <summary>The canvas inside the cloaked window that rendered documents are placed on (it may be smaller than they are).</summary>
-    public Canvas Surface => _surface ?? throw new InvalidOperationException("The host is not set up.");
+    /// <summary>The canvas rendered documents are placed on.</summary>
+    public Canvas Surface => (_surface ?? throw new InvalidOperationException("The host is not set up.")).Canvas;
 
-    /// <summary>Physical pixels per DIP of the cloaked window's monitor.</summary>
-    public double RasterizationScale => _surface?.XamlRoot?.RasterizationScale is > 0 and var scale ? scale : 1.0;
+    /// <summary>Physical pixels per DIP of the surface's monitor.</summary>
+    public double RasterizationScale => _surface?.RasterizationScale ?? 1.0;
 
     public IXamlType GetXamlType(Type type)
     {
@@ -90,39 +79,12 @@ internal sealed partial class HostApp : Application, IXamlMetadataProvider
 
     public XmlnsDefinition[] GetXmlnsDefinitions() => _providers.SelectMany(p => p.GetXmlnsDefinitions()).ToArray();
 
-    /// <summary>
-    /// Runs <paramref name="work"/> on the UI thread, one piece of work at a time (a render awaits the GPU in between, and
-    /// nothing else may touch the tree meanwhile).
-    /// </summary>
+    /// <inheritdoc cref="RenderSurface.InvokeAsync{T}(Func{T})"/>
     public Task<T> InvokeAsync<T>(Func<T> work) => InvokeTaskAsync(() => Task.FromResult(work()));
 
-    /// <inheritdoc cref="InvokeAsync{T}(Func{T})"/>
-    public Task<T> InvokeTaskAsync<T>(Func<Task<T>> work)
-    {
-        var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var queued = _dispatcher?.TryEnqueue(async () =>
-        {
-            await _gate.WaitAsync();
-            try
-            {
-                result.TrySetResult(await work());
-            }
-            catch (Exception ex)
-            {
-                result.TrySetException(ex);
-            }
-            finally
-            {
-                _gate.Release();
-            }
-        });
-        if (queued != true)
-        {
-            result.TrySetException(new InvalidOperationException("The renderer's UI thread has stopped."));
-        }
-
-        return result.Task;
-    }
+    /// <inheritdoc cref="RenderSurface.InvokeTaskAsync{T}(Func{Task{T}})"/>
+    public Task<T> InvokeTaskAsync<T>(Func<Task<T>> work) =>
+        _surface?.InvokeTaskAsync(work) ?? Task.FromException<T>(new InvalidOperationException("The host is not set up."));
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
@@ -155,21 +117,12 @@ internal sealed partial class HostApp : Application, IXamlMetadataProvider
     private void Finish(int exitCode)
     {
         _setExitCode(exitCode);
-        try
-        {
-            _window?.Close();
-        }
-        catch
-        {
-            // Exiting anyway.
-        }
-
+        _surface?.Dispose();
         Exit();
     }
 
     private async Task SetupAsync()
     {
-        _dispatcher = DispatcherQueue.GetForCurrentThread();
         _providers.Add(new Microsoft.UI.Xaml.XamlTypeInfo.XamlControlsXamlMetaDataProvider());
         // This assembly's generated provider (it knows DesignId). Found by reflection: naming the generated type in code
         // breaks the XAML compiler's first pass, which compiles this code before that type exists.
@@ -202,7 +155,7 @@ internal sealed partial class HostApp : Application, IXamlMetadataProvider
             LoadUserAppResources(Path.Combine(projectDirectory, "App.xaml"));
         }
 
-        await CreateWindowAsync();
+        _surface = await RenderSurface.CreateAsync();
     }
 
     /// <summary>The generated XAML metadata provider of an assembly (not its App class, which also implements the interface).</summary>
@@ -270,38 +223,7 @@ internal sealed partial class HostApp : Application, IXamlMetadataProvider
         }
     }
 
-    /// <summary>A cloaked tool window (never seen, no taskbar button, never activated) holding a canvas to render on.</summary>
-    private async Task CreateWindowAsync()
-    {
-        _surface = new Canvas();
-        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _surface.Loaded += (_, _) => loaded.TrySetResult();
-
-        _window = new Window { Title = "xDesigner renderer", Content = _surface };
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(_window);
-        var cloak = 1;
-        _ = DwmSetWindowAttribute(hwnd, DwmwaCloak, ref cloak, sizeof(int));
-        _ = SetWindowLongPtr(hwnd, GwlExStyle, GetWindowLongPtr(hwnd, GwlExStyle) | WsExToolWindow | WsExNoActivate);
-        _window.AppWindow.IsShownInSwitchers = false;
-        _window.AppWindow.ResizeClient(new Windows.Graphics.SizeInt32(800, 600));
-        _window.AppWindow.Show(activateWindow: false);
-
-        if (await Task.WhenAny(loaded.Task, Task.Delay(TimeSpan.FromSeconds(10))) != loaded.Task)
-        {
-            throw new InvalidOperationException("The renderer's window did not load.");
-        }
-    }
-
     private static string FirstLine(string text) =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .FirstOrDefault(l => !l.StartsWith("The text associated with this error code", StringComparison.Ordinal)) ?? text;
-
-    [LibraryImport("dwmapi.dll")]
-    private static partial int DwmSetWindowAttribute(nint hwnd, int attribute, ref int value, int size);
-
-    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
-    private static partial nint GetWindowLongPtr(nint hwnd, int index);
-
-    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
-    private static partial nint SetWindowLongPtr(nint hwnd, int index, nint value);
 }

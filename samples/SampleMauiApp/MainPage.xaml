@@ -1,0 +1,20 @@
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:SampleMauiApp.Controls"
+             x:Class="SampleMauiApp.MainPage"
+             Title="Sample MAUI App">
+  <Grid Padding="16" RowSpacing="12" RowDefinitions="Auto,*,Auto">
+    <Label x:Name="titleLabel" Text="Hello from .NET MAUI" FontSize="24" />
+
+    <VerticalStackLayout Grid.Row="1" Spacing="12">
+      <local:ContactCard x:Name="contactCard1" />
+      <local:StarRating x:Name="starRating1" Value="3" Maximum="5" />
+      <Image x:Name="image1" Source="red.png" WidthRequest="32" HeightRequest="32" HorizontalOptions="Start" />
+      <AbsoluteLayout x:Name="canvas1" HeightRequest="60">
+        <BoxView x:Name="box1" Color="Orange" AbsoluteLayout.LayoutBounds="20,10,40,40" />
+      </AbsoluteLayout>
+    </VerticalStackLayout>
+
+    <Button x:Name="button1" Grid.Row="2" Text="Click me" HorizontalOptions="Start" Clicked="button1_Clicked" />
+  </Grid>
+</ContentPage>

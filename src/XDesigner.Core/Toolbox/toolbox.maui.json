@@ -1,0 +1,62 @@
+{
+  "$comment": ".NET MAUI toolbox layout and drop defaults (docs/ARCHITECTURE.md §7.2, §9.1). Types are MAUI short names (Microsoft.Maui.Controls); entries the renderer doesn't know are hidden. Attributes are written as MAUI spells them (WidthRequest, not Width). '{name}' is replaced by the generated control name. 'sizeWhenPositioned' applies only when dropped at a point (AbsoluteLayout, Grid). Glyphs are Segoe Fluent Icons code points.",
+  "categories": [
+    {
+      "name": "Common",
+      "items": [
+        { "type": "Button", "glyph": "E739", "attributes": { "Text": "{name}" } },
+        { "type": "Label", "glyph": "E8D2", "attributes": { "Text": "{name}" } },
+        { "type": "Entry", "glyph": "E70F", "attributes": { "WidthRequest": "150" } },
+        { "type": "CheckBox", "glyph": "E73A" },
+        { "type": "RadioButton", "glyph": "ECCB", "attributes": { "Content": "{name}" } },
+        { "type": "Picker", "glyph": "E70D", "attributes": { "WidthRequest": "150" } },
+        { "type": "Image", "glyph": "EB9F", "attributes": { "WidthRequest": "100", "HeightRequest": "100" } },
+        { "type": "Slider", "glyph": "E9E9", "attributes": { "WidthRequest": "150" } },
+        { "type": "ProgressBar", "glyph": "E9D9", "attributes": { "WidthRequest": "150", "Progress": "0.5" } },
+        { "type": "Switch", "glyph": "E8AB" },
+        { "type": "Stepper", "glyph": "EC8F" },
+        { "type": "Editor", "glyph": "E70F", "attributes": { "WidthRequest": "200", "HeightRequest": "100" } },
+        { "type": "ImageButton", "glyph": "EB9F", "attributes": { "WidthRequest": "48", "HeightRequest": "48" } },
+        { "type": "ActivityIndicator", "glyph": "E895", "attributes": { "IsRunning": "True" } }
+      ]
+    },
+    {
+      "name": "Layout",
+      "items": [
+        { "type": "Grid", "glyph": "ECA5", "sizeWhenPositioned": { "WidthRequest": "200", "HeightRequest": "150" } },
+        { "type": "VerticalStackLayout", "glyph": "E8FD", "sizeWhenPositioned": { "WidthRequest": "200", "HeightRequest": "150" } },
+        { "type": "HorizontalStackLayout", "glyph": "E8FD", "sizeWhenPositioned": { "WidthRequest": "200", "HeightRequest": "150" } },
+        { "type": "AbsoluteLayout", "glyph": "E70A", "sizeWhenPositioned": { "WidthRequest": "200", "HeightRequest": "150" } },
+        { "type": "FlexLayout", "glyph": "E80A", "attributes": { "Wrap": "Wrap" }, "sizeWhenPositioned": { "WidthRequest": "200", "HeightRequest": "150" } },
+        { "type": "Border", "glyph": "E739", "attributes": { "WidthRequest": "100", "HeightRequest": "100", "Stroke": "Gray", "StrokeThickness": "1" } },
+        { "type": "ScrollView", "glyph": "E8CB", "sizeWhenPositioned": { "WidthRequest": "200", "HeightRequest": "150" } },
+        { "type": "ContentView", "glyph": "E739", "sizeWhenPositioned": { "WidthRequest": "200", "HeightRequest": "150" } }
+      ]
+    },
+    {
+      "name": "Collections",
+      "items": [
+        { "type": "CollectionView", "glyph": "E8FD", "attributes": { "HeightRequest": "150" } },
+        { "type": "CarouselView", "glyph": "E8B9", "attributes": { "HeightRequest": "150" } },
+        { "type": "ListView", "glyph": "E8FD", "attributes": { "HeightRequest": "150" } }
+      ]
+    },
+    {
+      "name": "Input & Pickers",
+      "items": [
+        { "type": "DatePicker", "glyph": "E787" },
+        { "type": "TimePicker", "glyph": "E823" },
+        { "type": "SearchBar", "glyph": "E721", "attributes": { "WidthRequest": "200" } }
+      ]
+    },
+    {
+      "name": "Shapes",
+      "items": [
+        { "type": "BoxView", "glyph": "E739", "attributes": { "WidthRequest": "100", "HeightRequest": "60", "Color": "LightGray" } },
+        { "type": "Rectangle", "glyph": "E739", "attributes": { "WidthRequest": "100", "HeightRequest": "60", "Fill": "LightGray" } },
+        { "type": "Ellipse", "glyph": "EA3A", "attributes": { "WidthRequest": "80", "HeightRequest": "80", "Fill": "LightGray" } },
+        { "type": "Line", "glyph": "E738", "attributes": { "X1": "0", "Y1": "0", "X2": "100", "Y2": "0", "Stroke": "Black", "StrokeThickness": "1" } }
+      ]
+    }
+  ]
+}

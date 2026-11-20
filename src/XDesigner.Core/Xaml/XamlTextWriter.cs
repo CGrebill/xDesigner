@@ -199,8 +199,8 @@ internal sealed class XamlTextWriter
             return name.LocalName;
         }
 
-        var prefix = element.GetPrefixOfNamespace(name.Namespace);
-        if (prefix is null && element.GetDefaultNamespace() == name.Namespace)
+        var prefix = element.PrefixOf(name.Namespace);
+        if (prefix is null && element.DefaultNamespaceOf() == name.Namespace)
         {
             return name.LocalName;
         }
@@ -225,7 +225,7 @@ internal sealed class XamlTextWriter
             return $"xml:{attribute.Name.LocalName}";
         }
 
-        var prefix = element.GetPrefixOfNamespace(attribute.Name.Namespace);
+        var prefix = element.PrefixOf(attribute.Name.Namespace);
         return prefix is null ? attribute.Name.LocalName : $"{prefix}:{attribute.Name.LocalName}";
     }
 

@@ -171,9 +171,11 @@ public sealed partial class ShellViewModel
         RefreshProjectFiles();
         await OpenFileAsync(xamlPath);
         var winui = profile?.Family == Core.Frameworks.FrameworkFamily.WinUI;
+        var maui = profile?.Family == Core.Frameworks.FrameworkFamily.Maui;
         RaiseNotify(NotifyKind.Success, kind switch
             {
-                ItemKind.UserControl => $"Created {className}. Rebuild to use it as a control in your other windows (it will appear under Project in the toolbox).",
+                ItemKind.UserControl => $"Created {className}. Rebuild to use it as a control in your other {(maui ? "pages" : "windows")} (it will appear under Project in the toolbox).",
+                ItemKind.Page when maui => $"Created {className}. Show it from code with: await Navigation.PushAsync(new {className}()); (in a NavigationPage) or by making it a window's Page.",
                 ItemKind.Page => $"Created {className}. Show it in a Frame from code with: frame.Navigate(typeof({className}));",
                 _ => $"Created {className}. Open it from code with: new {className}().{(winui ? "Activate" : "Show")}();",
             },

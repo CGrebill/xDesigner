@@ -11,7 +11,9 @@ Thanks for your interest! Bug reports, ideas and pull requests are welcome.
 
 ## Building and testing
 
-You need Windows 10 2004+ (or Windows 11) and the .NET 10 SDK. `global.json` selects the SDK.
+You need Windows 10 2004+ (or Windows 11), the .NET 11 SDK (`global.json` selects it; it also builds the .NET 10
+projects) and its MAUI workload for Windows: `dotnet workload install maui-windows` in an administrator terminal. Running
+packaged WinUI or MAUI apps from the designer needs Developer Mode.
 
 ```powershell
 dotnet build xDesigner.slnx
@@ -31,8 +33,11 @@ The release installer is made by `build\publish.ps1` (needs [Inno Setup 6](https
 | `src/XDesigner.Protocol` | The RPC contract and data types shared by the app and the render host |
 | `src/XDesigner.RenderHost.Avalonia` | The out-of-process Avalonia headless renderer: its source, and the project that builds it against Avalonia 12 |
 | `src/XDesigner.RenderHost.Avalonia11` | Builds the same renderer source against Avalonia 11 (`AVALONIA11`) |
+| `src/XDesigner.RenderHost.Common` | What every render host shares: command line, pipe server, PNG writer |
+| `src/XDesigner.RenderHost.WinUI` | The WinUI 3 renderer (a cloaked window run from a shadow copy of the project's output) |
+| `src/XDesigner.RenderHost.Maui`, `src/XDesigner.RenderHost.Maui10` | The .NET MAUI renderer: its source and the MAUI 11 build, and the MAUI 10 build of the same source |
 | `tests/` | xUnit v3 tests for Core and for the render hosts (they start the real renderer); the Avalonia 11 host's tests share the Avalonia 12 host's sources |
-| `samples/SampleAvaloniaApp`, `samples/SampleAvalonia11App` | The same app with custom controls on Avalonia 12 and 11, used by the tests |
+| `samples/` | Apps with custom controls for each framework (Avalonia 12 and 11, WinUI 3, MAUI 10 and 11), used by the tests |
 | `installer/`, `build/` | Inno Setup script and the release build script |
 | `tools/` | The icon generator and the third-party notices generator |
 | `docs/` | User guide and architecture |

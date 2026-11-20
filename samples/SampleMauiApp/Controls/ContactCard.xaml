@@ -1,0 +1,11 @@
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SampleMauiApp.Controls.ContactCard"
+             WidthRequest="320" HeightRequest="90">
+  <Border Padding="12" StrokeThickness="2" Stroke="{StaticResource CardBorderColor}" StrokeShape="RoundRectangle 8">
+    <VerticalStackLayout Spacing="4">
+      <Label x:Name="nameLabel" Text="Ada Lovelace" FontAttributes="Bold" />
+      <Label x:Name="detailLabel" Text="Analyst, Engine No. 1" />
+    </VerticalStackLayout>
+  </Border>
+</ContentView>

@@ -16,10 +16,25 @@ public sealed record DetectedFramework(FrameworkFamily? Family, Version? Version
     public string? Problem(string projectName) => this switch
     {
         { Family: null } => $"{projectName} doesn't use a UI framework the designer knows (Avalonia, WinUI 3 or .NET MAUI).",
-        { Profile: null } => $"{projectName} uses {Family}{(Version is { } v ? $" {v.Major}.{v.Minor}" : "")}. The designer supports "
-            + string.Join(" and ", FrameworkProfile.All.Where(p => p.IsSupported).Select(p => p.DisplayName).Order(StringComparer.Ordinal)) + ".",
+        { Profile: null } => $"{projectName} uses {FamilyName(Family.Value)}{(Version is { } v ? $" {v.Major}.{v.Minor}" : "")}. The designer supports {Supported()}.",
         { Profile.IsSupported: false } => $"{projectName} is a {Profile.DisplayName} project. Designing {Profile.DisplayName} is coming in a later version of xDesigner.",
         _ => null,
+    };
+
+    /// <summary>The supported versions, by framework: <c>Avalonia 11 and 12, WinUI 3 and .NET MAUI 10 and 11</c>.</summary>
+    internal static string Supported()
+    {
+        var groups = FrameworkProfile.All.Where(p => p.IsSupported)
+            .GroupBy(p => p.Family)
+            .Select(g => $"{FamilyName(g.Key)} {string.Join(" and ", g.Select(p => p.MajorVersion).Order())}")
+            .ToList();
+        return groups.Count <= 1 ? string.Concat(groups) : $"{string.Join(", ", groups.SkipLast(1))} and {groups[^1]}";
+    }
+
+    private static string FamilyName(FrameworkFamily family) => family switch
+    {
+        FrameworkFamily.Maui => ".NET MAUI",
+        _ => family.ToString(),
     };
 }
 

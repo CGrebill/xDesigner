@@ -28,3 +28,5 @@ dotnet_diagnostic.CA1707.severity = none
 dotnet_diagnostic.CA1720.severity = none
 # CA1859 - read-only interfaces in signatures are a deliberate API choice; the gain from concrete types is negligible here.
 dotnet_diagnostic.CA1859.severity = suggestion
+# CsWinRT1032 - collection expressions for read-only interfaces only matter to trimmed or AOT-compiled WinRT apps; xDesigner is neither.
+dotnet_diagnostic.CsWinRT1032.severity = none

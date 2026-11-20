@@ -140,20 +140,20 @@ public sealed partial class DesignerActions
             }
 
             RenameClashes(clone, assignedNames);
-            NormalizeForTarget(clone, targetKind);
+            NormalizeForTarget(clone, targetKind, _document.Profile.Layout);
             XamlFormatting.Reindent(clone, indent, unit);
 
             // Prefixes written inside values (x:DataType="vm:Item", {x:Static local:…}) must keep their exact name.
             foreach (var prefix in PrefixesInValues(clone))
             {
-                var ns = element.GetNamespaceOfPrefix(prefix) ?? (context.LookupNamespace(prefix) is { } n ? XNamespace.Get(n) : null);
-                if (ns is null || root.GetNamespaceOfPrefix(prefix) == ns
+                var ns = element.NamespaceOf(prefix) ?? (context.LookupNamespace(prefix) is { } n ? XNamespace.Get(n) : null);
+                if (ns is null || root.NamespaceOf(prefix) == ns
                     || (declaredPrefixes.TryGetValue(prefix, out var already) && already == ns))
                 {
                     continue;
                 }
 
-                if (root.GetNamespaceOfPrefix(prefix) is null && !declaredPrefixes.ContainsKey(prefix))
+                if (root.NamespaceOf(prefix) is null && !declaredPrefixes.ContainsKey(prefix))
                 {
                     commands.Add(new SetAttributeCommand(_document.Root.Id, XNamespace.Xmlns + prefix, ns.NamespaceName));
                     declaredPrefixes[prefix] = ns;
@@ -168,9 +168,9 @@ public sealed partial class DesignerActions
 
             foreach (var ns in UsedNamespaces(clone))
             {
-                if (root.GetPrefixOfNamespace(ns) is null && root.GetDefaultNamespace() != ns && clone.GetPrefixOfNamespace(ns) is null && declared.Add(ns))
+                if (root.PrefixOf(ns) is null && root.DefaultNamespaceOf() != ns && clone.PrefixOf(ns) is null && declared.Add(ns))
                 {
-                    var prefix = UniquePrefix(root, (isFragment ? parsed.GetPrefixOfNamespace(ns) : context.LookupPrefix(ns.NamespaceName)) ?? "local");
+                    var prefix = UniquePrefix(root, (isFragment ? parsed.PrefixOf(ns) : context.LookupPrefix(ns.NamespaceName)) ?? "local");
                     commands.Add(new SetAttributeCommand(_document.Root.Id, XNamespace.Xmlns + prefix, ns.NamespaceName));
                 }
             }
@@ -274,25 +274,23 @@ public sealed partial class DesignerActions
     }
 
     /// <summary>Drops other panels' attached properties and, where positions apply, offsets them by 10.</summary>
-    private static void NormalizeForTarget(XElement element, PanelKind? targetKind)
+    private static void NormalizeForTarget(XElement element, PanelKind? targetKind, Frameworks.LayoutVocabulary vocabulary)
     {
-        foreach (var (attribute, owner) in PanelAttachedProperties)
-        {
-            if (owner != targetKind)
-            {
-                element.Attribute(attribute)?.Remove();
-            }
-        }
+        // Canonical names (§7.1), written in the document's vocabulary; removed together, as MAUI keeps Left and Top in one attribute.
+        vocabulary.Apply(element, PanelAttachedProperties
+            .Where(p => p.Owner != targetKind && vocabulary.Get(element, p.Attribute) is not null)
+            .Select(p => new KeyValuePair<XName, string?>(p.Attribute, null))
+            .ToList());
 
-        var designerPositioned = (string?)element.Attribute("HorizontalAlignment") == "Left"
-            && (string?)element.Attribute("VerticalAlignment") == "Top"
+        var designerPositioned = vocabulary.Get(element, "HorizontalAlignment") == "Left"
+            && vocabulary.Get(element, "VerticalAlignment") == "Top"
             && element.Attribute("Margin") is not null;
 
         switch (targetKind)
         {
             case PanelKind.Canvas:
-                Offset(element, "Canvas.Left");
-                Offset(element, "Canvas.Top");
+                Offset(element, "Canvas.Left", vocabulary);
+                Offset(element, "Canvas.Top", vocabulary);
                 break;
             case PanelKind.Grid or PanelKind.Other when designerPositioned:
                 var parts = ((string)element.Attribute("Margin")!).Split(',');
@@ -306,20 +304,18 @@ public sealed partial class DesignerActions
             default:
                 if (designerPositioned && !IsPositional(targetKind))
                 {
-                    element.Attribute("HorizontalAlignment")?.Remove();
-                    element.Attribute("VerticalAlignment")?.Remove();
-                    element.Attribute("Margin")?.Remove();
+                    vocabulary.Apply(element, [new("HorizontalAlignment", null), new("VerticalAlignment", null), new("Margin", null)]);
                 }
 
                 break;
         }
     }
 
-    private static void Offset(XElement element, string attribute)
+    private static void Offset(XElement element, string attribute, Frameworks.LayoutVocabulary vocabulary)
     {
-        if (double.TryParse((string?)element.Attribute(attribute), NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        if (double.TryParse(vocabulary.Get(element, attribute), NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
         {
-            element.SetAttributeValue(attribute, (value + 10).ToString(CultureInfo.InvariantCulture));
+            vocabulary.Apply(element, [new(attribute, (value + 10).ToString(CultureInfo.InvariantCulture))]);
         }
     }
 

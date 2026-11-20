@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The .NET MAUI render host built against MAUI 10 (§14.6): the source is ..\XDesigner.RenderHost.Maui's. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <AssemblyName>XDesigner.RenderHost.Maui10</AssemblyName>
+    <MauiPackageVersion>$(Maui10Version)</MauiPackageVersion>
+  </PropertyGroup>
+
+  <Import Project="..\XDesigner.RenderHost.Maui\XDesigner.RenderHost.Maui.props" />
+
+  <ItemGroup>
+    <Compile Include="..\XDesigner.RenderHost.Maui\**\*.cs" Exclude="..\XDesigner.RenderHost.Maui\bin\**;..\XDesigner.RenderHost.Maui\obj\**" LinkBase="Shared" />
+    <MauiXaml Remove="**" />
+    <ApplicationDefinition Include="..\XDesigner.RenderHost.Maui\Platforms\Windows\App.xaml" Link="Platforms\Windows\App.xaml" />
+    <Compile Remove="..\XDesigner.RenderHost.Maui\Platforms\Windows\App.xaml.cs" />
+    <Compile Include="..\XDesigner.RenderHost.Maui\Platforms\Windows\App.xaml.cs" Link="Platforms\Windows\App.xaml.cs" DependentUpon="App.xaml" />
+    <Manifest Include="..\XDesigner.RenderHost.Maui\Platforms\Windows\app.manifest" Link="Platforms\Windows\app.manifest" />
+  </ItemGroup>
+
+</Project>

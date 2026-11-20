@@ -100,7 +100,7 @@ public sealed partial class DesignerActions
         var commands = new List<IUndoableCommand>();
         if (newName is not null)
         {
-            if (_document.Xml.Root!.GetPrefixOfNamespace(XamlNs) is null)
+            if (_document.Xml.Root!.PrefixOf(XamlNs) is null)
             {
                 commands.Add(new SetAttributeCommand(root.Id, XNamespace.Xmlns + "x", XamlNs.NamespaceName));
             }

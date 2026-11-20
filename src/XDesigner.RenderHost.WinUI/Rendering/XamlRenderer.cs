@@ -1,12 +1,8 @@
 using System.Reflection;
-using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text.RegularExpressions;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Markup;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
 using XDesigner.Protocol.Rendering;
 using XDesigner.RenderHost.Hosting;
 
@@ -22,9 +18,6 @@ internal sealed partial class XamlRenderer(HostApp host, RenderCopySanitizer san
     public const double DefaultDesignWidth = 800;
 
     public const double DefaultDesignHeight = 450;
-
-    /// <summary>How long a render waits for images to decode before drawing without them.</summary>
-    private static readonly TimeSpan ImageWait = TimeSpan.FromSeconds(1.5);
 
     private FrameworkElement? _frame;
 
@@ -55,7 +48,7 @@ internal sealed partial class XamlRenderer(HostApp host, RenderCopySanitizer san
         {
             root.Width = width;
             root.Height = height;
-            frame = CreateFrame(root, request.Theme, width * scale / host.RasterizationScale, height * scale / host.RasterizationScale);
+            frame = FrameCapture.CreateFrame(root, request.Theme, width * scale / host.RasterizationScale, height * scale / host.RasterizationScale);
             host.Surface.Children.Add(frame);
         }
         catch (Exception ex)
@@ -65,42 +58,19 @@ internal sealed partial class XamlRenderer(HostApp host, RenderCopySanitizer san
 
         try
         {
-            frame.UpdateLayout();
-            await IdleAsync();          // Loaded handlers and deferred template work
-            var images = await WaitForImagesAsync(root);
-            foreach (var element in images)
-            {
-                // Measured before its image had loaded (an image without a set size measures to the picture).
-                element.InvalidateMeasure();
-            }
-
-            frame.UpdateLayout();
-            if (images.Count > 0)
-            {
-                // WinUI decodes images again at the size they are shown, asynchronously: let that reach the screen.
-                await RenderedFramesAsync(2);
-                frame.UpdateLayout();
-            }
-
-            var bitmap = new RenderTargetBitmap();
-            await bitmap.RenderAsync(frame);
-            if (bitmap.PixelWidth == 0 || bitmap.PixelHeight == 0)
-            {
-                throw new InvalidOperationException("The form drew nothing (it may be too large to draw).");
-            }
-
-            var pixels = (await bitmap.GetPixelsAsync()).ToArray();
+            var (pixelWidth, pixelHeight, pixels) = await FrameCapture.CaptureAsync(frame);
             var layout = LayoutTreeBuilder.Build(root);
             if (copy.IsWindow && layout is not null && layout.DesignId != 0)
             {
                 // The stand-in Grid is the Window's client area: report it as the Window (a content control, not a grid).
                 layout = layout with { TypeName = typeof(Window).FullName!, Panel = null };
             }
+
             ReplaceCurrent(frame, root);
 
             var rootKind = copy.IsWindow ? RootKind.Window : root is UserControl ? RootKind.UserControl : RootKind.Other;
             return new RenderResult(
-                request.Version, true, bitmap.PixelWidth, bitmap.PixelHeight, bitmap.PixelWidth / width, pixels, layout, rootKind,
+                request.Version, true, pixelWidth, pixelHeight, pixelWidth / width, pixels, layout, rootKind,
                 copy.IsWindow ? copy.WindowTitle : null, null);
         }
         catch (Exception ex)
@@ -122,104 +92,8 @@ internal sealed partial class XamlRenderer(HostApp host, RenderCopySanitizer san
         CurrentRoot = null;
     }
 
-    /// <summary>
-    /// What gets drawn: the theme's page background (as behind a window's content) with the document scaled to the frame's
-    /// pixel size by a Viewbox, so zoomed renders are sharp. The root's own coordinates stay unscaled for the layout tree.
-    /// </summary>
-    private static Border CreateFrame(FrameworkElement root, ThemeVariantKind theme, double width, double height)
-    {
-        var frame = (Border)XamlReader.Load(
-            $$"""<Border xmlns="{{XamlTypeResolver.PresentationNamespace}}" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" />""");
-        frame.RequestedTheme = theme switch
-        {
-            ThemeVariantKind.Light => ElementTheme.Light,
-            ThemeVariantKind.Dark => ElementTheme.Dark,
-            _ => ElementTheme.Default,
-        };
-        frame.Width = width;
-        frame.Height = height;
-        frame.Child = new Viewbox { Stretch = Stretch.Fill, Child = root };
-        return frame;
-    }
-
     private static double FirstUsable(params double?[] candidates) =>
         candidates.First(v => v is { } d && double.IsFinite(d) && d > 0)!.Value;
-
-    /// <summary>Lets queued UI work (Loaded events, deferred layout) run before drawing.</summary>
-    private static Task IdleAsync()
-    {
-        var done = new TaskCompletionSource();
-        if (DispatcherQueue.GetForCurrentThread()?.TryEnqueue(DispatcherQueuePriority.Low, () => done.TrySetResult()) != true)
-        {
-            done.TrySetResult();
-        }
-
-        return done.Task;
-    }
-
-    /// <summary>Waits until the compositor has drawn <paramref name="count"/> frames (at most a quarter second).</summary>
-    private static async Task RenderedFramesAsync(int count)
-    {
-        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var seen = 0;
-        void OnRendering(object? sender, object e)
-        {
-            if (++seen >= count)
-            {
-                done.TrySetResult();
-            }
-        }
-
-        CompositionTarget.Rendering += OnRendering;
-        try
-        {
-            await Task.WhenAny(done.Task, Task.Delay(TimeSpan.FromMilliseconds(250)));
-        }
-        finally
-        {
-            CompositionTarget.Rendering -= OnRendering;
-        }
-    }
-
-    /// <summary>
-    /// Images decode asynchronously: wait (briefly) until each one has loaded or failed, so the frame shows them.
-    /// Returns the elements showing images, to measure again.
-    /// </summary>
-    private static async Task<List<UIElement>> WaitForImagesAsync(DependencyObject root)
-    {
-        var pending = new List<Task>();
-        var showing = new List<UIElement>();
-        foreach (var element in LayoutTreeBuilder.SelfAndDescendants(root))
-        {
-            var source = element switch
-            {
-                Image image => image.Source,
-                Border { Background: ImageBrush brush } => brush.ImageSource,
-                Panel { Background: ImageBrush brush } => brush.ImageSource,
-                Control { Background: ImageBrush brush } => brush.ImageSource,
-                _ => null,
-            };
-            if (source is not null)
-            {
-                showing.Add((UIElement)element);
-            }
-
-            if (source is BitmapImage { UriSource: not null, PixelWidth: 0 } bitmap)
-            {
-                var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                bitmap.ImageOpened += (_, _) => loaded.TrySetResult();
-                bitmap.ImageFailed += (_, _) => loaded.TrySetResult();
-                pending.Add(loaded.Task);
-            }
-        }
-
-        if (pending.Count > 0)
-        {
-            await Task.WhenAny(Task.WhenAll(pending), Task.Delay(ImageWait));
-        }
-
-        return showing;
-    }
 
     private void ReplaceCurrent(FrameworkElement frame, FrameworkElement root)
     {

@@ -92,8 +92,14 @@ public sealed record FrameworkProfile
     /// </summary>
     public bool HostRunsFromProjectOutput { get; init; }
 
+    /// <summary>The host runs with the project's resource index as its own (MAUI, §14.6; see <see cref="Rendering.ShadowHostFolder.Prepare"/>).</summary>
+    public bool HostUsesProjectResourceIndex { get; init; }
+
     /// <summary>MSBuild item that packages project images (<c>AvaloniaResource</c>), or null where images need none.</summary>
     public required string? ResourceItemName { get; init; }
+
+    /// <summary>The project folder images are added to (§12): <c>Assets</c>; MAUI <c>Resources\Images</c>.</summary>
+    public string AssetsFolder { get; init; } = "Assets";
 
     /// <summary>Scheme of resource URIs inside the project assembly (<c>avares</c>), or null.</summary>
     public required string? ResourceUriScheme { get; init; }
@@ -122,6 +128,9 @@ public sealed record FrameworkProfile
     /// <summary>The framework's tab control, its tab type and the property holding the tabs (§9.4); null where it has none.</summary>
     public TabsInfo? Tabs { get; init; }
 
+    /// <summary>How the framework spells the layout attributes placement writes (§7.1).</summary>
+    public LayoutVocabulary Layout { get; init; } = LayoutVocabulary.Xaml;
+
     /// <summary>The full CLR name of a built-in control: <c>Grid</c> → <c>Avalonia.Controls.Grid</c>.</summary>
     public string BuiltIn(string name) => $"{ControlsNamespace}.{name}";
 
@@ -135,7 +144,12 @@ public sealed record FrameworkProfile
     /// the Windows App SDK, <c>WinUI 3, Windows App SDK 2.7.0</c>.
     /// </summary>
     public string DescribeVersion(string frameworkVersion) =>
-        Family == FrameworkFamily.WinUI ? $"{DisplayName}, Windows App SDK {frameworkVersion}" : $"{Family} {frameworkVersion}";
+        Family switch
+        {
+            FrameworkFamily.WinUI => $"{DisplayName}, Windows App SDK {frameworkVersion}",
+            FrameworkFamily.Maui => $".NET MAUI {frameworkVersion}",
+            _ => $"{Family} {frameworkVersion}",
+        };
 
     public static readonly FrameworkProfile Avalonia12 = new()
     {
@@ -207,7 +221,7 @@ public sealed record FrameworkProfile
         Family = FrameworkFamily.Maui,
         DisplayName = ".NET MAUI 10",
         MajorVersion = 10,
-        IsSupported = false,
+        IsSupported = true,
         DefaultNamespace = MauiNamespace,
         XamlNamespace = Xaml2009Namespace,
         DesignNamespace = MauiDesignNamespace,
@@ -216,13 +230,18 @@ public sealed record FrameworkProfile
         ControlsNamespace = "Microsoft.Maui.Controls",
         HostFolder = "maui10",
         HostExecutable = "XDesigner.RenderHost.Maui10.exe",
+        HostRunsFromProjectOutput = true,
+        HostUsesProjectResourceIndex = true,
         ResourceItemName = "MauiImage",
+        AssetsFolder = @"Resources\Images",
         ResourceUriScheme = null,
         ToolboxResource = "toolbox.maui.json",
-        ProjectTemplate = null,
+        ProjectTemplate = "MauiApp",
+        TemplateVersion = "10.0.130", // = Maui10Version in Directory.Packages.props
         CompactGridDefinitions = true,
         HiddenAttribute = ("IsVisible", "False"),
         TopLevelTypes = ["Microsoft.Maui.Controls.Page", "Microsoft.Maui.Controls.Window"],
+        Layout = LayoutVocabulary.Maui,
     };
 
     public static readonly FrameworkProfile Maui11 = Maui10 with
@@ -232,6 +251,7 @@ public sealed record FrameworkProfile
         MajorVersion = 11,
         HostFolder = "maui11",
         HostExecutable = "XDesigner.RenderHost.Maui11.exe",
+        TemplateVersion = "11.0.0", // = Maui11Version in Directory.Packages.props
     };
 
     public static IReadOnlyList<FrameworkProfile> All { get; } = [Avalonia12, Avalonia11, WinUI3, Maui10, Maui11];

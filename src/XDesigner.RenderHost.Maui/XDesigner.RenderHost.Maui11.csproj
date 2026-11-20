@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The .NET MAUI render host (§14.6). This folder holds its source; this project builds it against MAUI 11, and
+    ..\XDesigner.RenderHost.Maui10 builds the same source against MAUI 10 (each MAUI version pins its own Windows App SDK,
+    so each has its own host). It is a MAUI app for Windows that runs the project's own MauiProgram, draws pages through
+    MAUI's WinUI handlers and captures them like the WinUI host, whose surface and capture code it links.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net11.0-windows10.0.19041.0</TargetFramework>
+    <AssemblyName>XDesigner.RenderHost.Maui11</AssemblyName>
+    <MauiPackageVersion>$(Maui11Version)</MauiPackageVersion>
+  </PropertyGroup>
+
+  <Import Project="XDesigner.RenderHost.Maui.props" />
+
+</Project>

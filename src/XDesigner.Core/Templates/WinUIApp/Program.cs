@@ -9,11 +9,11 @@ public static class Program
     public static void Main()
     {
         WinRT.ComWrappersSupport.InitializeComWrappers();
-        Application.Start(_ =>
+        Application.Start(p =>
         {
             // async/await continues on the UI thread, as in any WinUI app.
             SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
-            new App();
+            _ = new App();
         });
     }
 }

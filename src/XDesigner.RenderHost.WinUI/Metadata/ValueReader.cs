@@ -56,7 +56,7 @@ internal static class ValueReader
         }
 
         var seen = new HashSet<DependencyObject>(ReferenceEqualityComparer.Instance);
-        foreach (var element in LayoutTreeBuilder.SelfAndDescendants(root))
+        foreach (var element in FrameCapture.SelfAndDescendants(root))
         {
             seen.Add(element);
             if (DesignId.GetValue(element) == designId)
@@ -65,7 +65,8 @@ internal static class ValueReader
             }
         }
 
-        var stack = new Stack<DependencyObject>([root]);
+        var stack = new Stack<DependencyObject>();
+        stack.Push(root);
         while (stack.Count > 0)
         {
             var current = stack.Pop();

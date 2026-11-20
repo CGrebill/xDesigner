@@ -6,6 +6,9 @@
     <Avalonia11Version>11.3.23</Avalonia11Version>
     <!-- The app, the WinUI render host (which reports it in its handshake) and the WinUI project templates. -->
     <WindowsAppSdkVersion>2.7.0</WindowsAppSdkVersion>
+    <!-- The .NET MAUI render hosts (Maui11 uses the default; Maui10 a VersionOverride) and the MAUI project templates. -->
+    <Maui11Version>11.0.0</Maui11Version>
+    <Maui10Version>10.0.130</Maui10Version>
   </PropertyGroup>
   <ItemGroup Label="Avalonia (RenderHost, samples)">
     <PackageVersion Include="Avalonia" Version="$(AvaloniaVersion)" />
@@ -15,6 +18,9 @@
     <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="$(AvaloniaVersion)" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
     <PackageVersion Include="Avalonia.Fonts.Inter" Version="$(AvaloniaVersion)" />
+  </ItemGroup>
+  <ItemGroup Label=".NET MAUI (render hosts)">
+    <PackageVersion Include="Microsoft.Maui.Controls" Version="$(Maui11Version)" />
   </ItemGroup>
   <ItemGroup Label="Shared infrastructure">
     <PackageVersion Include="StreamJsonRpc" Version="2.26.150" />

@@ -27,22 +27,6 @@ internal static class LayoutTreeBuilder
         };
     }
 
-    /// <summary>The element and everything below it in the visual tree.</summary>
-    public static IEnumerable<DependencyObject> SelfAndDescendants(DependencyObject root)
-    {
-        var stack = new Stack<DependencyObject>();
-        stack.Push(root);
-        while (stack.Count > 0)
-        {
-            var current = stack.Pop();
-            yield return current;
-            for (var i = VisualTreeHelper.GetChildrenCount(current) - 1; i >= 0; i--)
-            {
-                stack.Push(VisualTreeHelper.GetChild(current, i));
-            }
-        }
-    }
-
     private static void Collect(DependencyObject element, FrameworkElement root, bool parentVisible, List<ElementLayout> into)
     {
         var visible = parentVisible && (element is not UIElement ui || ui.Visibility == Visibility.Visible);

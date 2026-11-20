@@ -20,7 +20,7 @@ public static class RenderCopyBuilder
     /// <summary>Ids in document order (1, 2, 3, ...).</summary>
     public static string Build(string xaml)
     {
-        var document = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
+        var document = ImplicitNamespaces.Parse(xaml, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
         var next = 0;
         return Build(document, _ => ++next);
     }
@@ -34,6 +34,19 @@ public static class RenderCopyBuilder
         var copy = new XDocument(source);
         var root = copy.Root ?? throw new ArgumentException("The XAML document has no root element.", nameof(source));
         root.SetAttributeValue(XNamespace.Xmlns + "dsn", ProtocolInfo.DesignIdXmlNamespace);
+
+        // A file that leaves its namespaces implicit (MAUI 11, §5.3) gets them written out: the runtime loader needs them.
+        if (source.Annotation<ImplicitNamespaces>() is { } implicitNamespaces)
+        {
+            foreach (var (prefix, ns) in implicitNamespaces.ByPrefix)
+            {
+                var declaration = prefix.Length == 0 ? XName.Get("xmlns") : XNamespace.Xmlns + prefix;
+                if (root.Attribute(declaration) is null)
+                {
+                    root.SetAttributeValue(declaration, ns.NamespaceName);
+                }
+            }
+        }
 
         // Walk source and copy in step so ids are computed from the original elements.
         foreach (var (original, clone) in source.Root!.DescendantsAndSelf().Zip(root.DescendantsAndSelf()))

@@ -7,7 +7,8 @@ namespace XDesigner.Core.Project;
 /// <summary>An opened project (§11.1), as MSBuild evaluates it.</summary>
 /// <param name="TargetPath">The built assembly (<c>bin/Debug/net10.0/App.dll</c>); may not exist yet.</param>
 /// <param name="Platform">The platform it is built for (<c>x64</c>), for projects that need one (WinUI has no AnyCPU build); else null.</param>
-/// <param name="IsPackaged">A packaged (MSIX) WinUI app: it runs from a registered package, not from its exe (§11.3).</param>
+/// <param name="IsPackaged">A packaged (MSIX) WinUI or MAUI app: it runs from a registered package, not from its exe (§11.3).</param>
+/// <param name="BuildFramework">The target framework to build and run (<c>-f</c>) when the project targets several: MAUI's Windows one.</param>
 public sealed record ProjectInfo(
     string ProjectPath,
     string Name,
@@ -17,7 +18,8 @@ public sealed record ProjectInfo(
     string TargetFramework,
     string OutputType,
     string? Platform = null,
-    bool IsPackaged = false)
+    bool IsPackaged = false,
+    string? BuildFramework = null)
 {
     public string Directory => Path.GetDirectoryName(ProjectPath)!;
 
@@ -40,7 +42,7 @@ public sealed record ProjectInfo(
 public static partial class ProjectReader
 {
     private static readonly string[] Properties =
-        ["TargetPath", "AssemblyName", "RootNamespace", "TargetFramework", "TargetFrameworks", "OutputType", "Platform", "UseWinUI", "WindowsPackageType"];
+        ["TargetPath", "AssemblyName", "RootNamespace", "TargetFramework", "TargetFrameworks", "OutputType", "Platform", "UseWinUI", "UseMaui", "WindowsPackageType"];
 
     /// <summary>The platform WinUI projects are built for here: this machine's (WinUI has no AnyCPU build).</summary>
     public static string NativePlatform =>
@@ -66,7 +68,9 @@ public static partial class ProjectReader
         }
 
         string? platform = null;
-        var isWinUI = string.Equals(values.GetValueOrDefault("UseWinUI"), "true", StringComparison.OrdinalIgnoreCase);
+        var isMaui = string.Equals(values.GetValueOrDefault("UseMaui"), "true", StringComparison.OrdinalIgnoreCase);
+        // A MAUI project is built and run for its Windows target only (no Android or iOS workloads needed), with MAUI's platform handling.
+        var isWinUI = !isMaui && string.Equals(values.GetValueOrDefault("UseWinUI"), "true", StringComparison.OrdinalIgnoreCase);
         if (isWinUI)
         {
             platform = values.GetValueOrDefault("Platform") is { } own && !string.Equals(own, "AnyCPU", StringComparison.OrdinalIgnoreCase) && own.Length > 0 ? own : NativePlatform;
@@ -90,7 +94,8 @@ public static partial class ProjectReader
             values.GetValueOrDefault("TargetFramework") ?? "",
             values.GetValueOrDefault("OutputType") ?? "",
             platform,
-            isWinUI && !string.Equals(values.GetValueOrDefault("WindowsPackageType"), "None", StringComparison.OrdinalIgnoreCase));
+            (isWinUI || isMaui) && !string.Equals(values.GetValueOrDefault("WindowsPackageType"), "None", StringComparison.OrdinalIgnoreCase),
+            isMaui && values.GetValueOrDefault("TargetFramework") is { Length: > 0 } framework ? framework : null);
     }
 
     private static async Task<Dictionary<string, string>> GetPropertiesAsync(string projectPath, string[] extra, CancellationToken cancellationToken)

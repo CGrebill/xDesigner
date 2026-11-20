@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Tests of the MAUI render hosts (MAUI 10 and 11), out of process and over the pipe as the designer app talks to them.
+    Each host runs from a shadow folder of the sample MAUI app's build for its .NET version (§14.6).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>XDesigner.RenderHost.Maui.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\XDesigner.Core\XDesigner.Core.csproj" />
+    <!-- Built first, then started as processes; not referenced at compile time. -->
+    <ProjectReference Include="..\..\src\XDesigner.RenderHost.Maui\XDesigner.RenderHost.Maui11.csproj"
+                      ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" SetPlatform="Platform=x64" />
+    <ProjectReference Include="..\..\src\XDesigner.RenderHost.Maui10\XDesigner.RenderHost.Maui10.csproj"
+                      ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" SetPlatform="Platform=x64" />
+    <ProjectReference Include="..\..\samples\SampleMauiApp\SampleMauiApp.csproj"
+                      ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

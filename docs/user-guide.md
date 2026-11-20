@@ -36,20 +36,22 @@ attention (confirmations, warnings, errors) slide in under the title bar.
 
 ## Projects and files
 
-- **File › New project…** (Ctrl+Shift+N) creates a desktop app: choose Avalonia 12, Avalonia 11 or WinUI 3 (and for
-  WinUI whether it is **Packaged (MSIX)**), a name, a folder (by default `Documents\Avalonia Projects`) and the window
-  title. xDesigner builds it and opens its main window. The project is a normal .NET project; open it in Visual Studio,
+- **File › New project…** (Ctrl+Shift+N) creates a desktop app: choose Avalonia 12, Avalonia 11, WinUI 3 or .NET MAUI
+  11 or 10 (and for WinUI and MAUI whether it is **Packaged (MSIX)**), a name, a folder (by default
+  `Documents\Avalonia Projects`) and the window title. A MAUI app is created for Windows; add Android, iOS or macOS to its
+  project file later. xDesigner builds it and opens its main window. The project is a normal .NET project; open it in Visual Studio,
   VS Code or Rider whenever you like.
 - **Project › Open project…** (Ctrl+Shift+O) opens a `.csproj`, `.sln` or `.slnx`. All of a solution's projects open
   together, in **Solution Explorer** (the **Solution** tab above the outline): each project shows the framework it
   uses, and the startup project (the one Run starts, in bold) can be changed with a right-click. Projects can use
-  Avalonia 11 (11.1 or later), Avalonia 12 or WinUI 3, mixed in one solution: each file is drawn by its own project's
-  framework. Double-click a XAML file to design it, or any other file to open it in your code editor. The startup
+  Avalonia 11 (11.1 or later), Avalonia 12, WinUI 3 or .NET MAUI 10 or 11, mixed in one solution: each file is drawn by
+  its own project's framework. Double-click a XAML file to design it, or any other file to open it in your code editor. The startup
   project's XAML files are also listed under **Project › Files**.
 - **File › Open…** (Ctrl+O) opens a single `.axaml` file, or a project. A file opened on its own still finds its
   project, so its custom controls render.
 - **Project › Add window…** and **Add user control…** (and **Add page…** in a WinUI project) create a new `.axaml`
-  file (`.xaml` in WinUI) with its code-behind and open it.
+  file (`.xaml` in WinUI) with its code-behind and open it. In a MAUI project they are **Add content page…** and **Add
+  content view…** (MAUI windows are made in code).
 - **File › Open recent** lists recent files and projects.
 - **Save** (Ctrl+S), **Save all** (Ctrl+Shift+S), **Close** (Ctrl+W). A tab with unsaved changes shows a dot, and
   xDesigner asks before closing it.
@@ -147,7 +149,8 @@ Properties that take an image (an Image's Source, a Window's Icon) have a picker
 project's `Assets` folder. **Browse…** picks any image: xDesigner copies it into `Assets` (keeping a numbered copy if a
 different file of that name is there), makes sure the project includes `Assets` (as Avalonia resources, or in WinUI as
 content copied next to the app), sets the property to `/Assets/name.png` (`ms-appx:///Assets/name.png` in WinUI) and
-rebuilds so the form can show it. **Remove** clears the property. Images need a project; for a
+rebuilds so the form can show it. In a MAUI project images go to `Resources\Images` as MauiImages, renamed to the
+lowercase letters, digits and underscores MAUI allows, and are set by file name (`my_logo.png`). **Remove** clears the property. Images need a project; for a
 file opened on its own, xDesigner explains that.
 
 ## Previewing
@@ -179,8 +182,10 @@ installed app (its console output isn't shown). Windows only allows that with **
 For developers); without it, xDesigner starts the app's exe directly and says so in Output › Run. The app then works,
 except for features that need a package identity, such as notifications.
 
-Building and running needs the [.NET 10 SDK](https://dotnet.microsoft.com/download) (the project's `global.json` can ask
-for another version). Opening and designing files works without it.
+Building and running needs the [.NET SDK](https://dotnet.microsoft.com/download) the project uses (its `global.json` can
+ask for a version), and for a .NET MAUI project the MAUI workload for Windows (`dotnet workload install maui-windows`, in
+an administrator terminal). xDesigner builds and runs MAUI projects for Windows only, so the Android and iOS workloads
+aren't needed. Opening and designing files works without any of them.
 
 ## Settings
 

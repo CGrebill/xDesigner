@@ -76,6 +76,8 @@ Name: "app"; Description: "xDesigner"; Types: full custom; Flags: fixed
 Name: "avalonia12"; Description: "Avalonia 12 renderer"; Types: full custom
 Name: "avalonia11"; Description: "Avalonia 11 renderer (projects on Avalonia 11.1 or later)"; Types: full
 Name: "winui3"; Description: "WinUI 3 renderer (Windows App SDK projects)"; Types: full
+Name: "maui11"; Description: ".NET MAUI 11 renderer"; Types: full
+Name: "maui10"; Description: ".NET MAUI 10 renderer"; Types: full
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -89,9 +91,11 @@ Source: "{#PublishDir}\*"; Excludes: "\renderhosts\*"; DestDir: "{app}"; Compone
 Source: "{#PublishDir}\renderhosts\avalonia12\*"; DestDir: "{app}\renderhosts\avalonia12"; Components: avalonia12; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PublishDir}\renderhosts\avalonia11\*"; DestDir: "{app}\renderhosts\avalonia11"; Components: avalonia11; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PublishDir}\renderhosts\winui3\*"; DestDir: "{app}\renderhosts\winui3"; Components: winui3; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PublishDir}\renderhosts\maui11\*"; DestDir: "{app}\renderhosts\maui11"; Components: maui11; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PublishDir}\renderhosts\maui10\*"; DestDir: "{app}\renderhosts\maui10"; Components: maui10; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; Comment: "A visual designer for Avalonia UI and WinUI 3"
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; Comment: "A visual designer for Avalonia UI, WinUI 3 and .NET MAUI"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]

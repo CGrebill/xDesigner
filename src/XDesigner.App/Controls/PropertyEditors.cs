@@ -293,7 +293,7 @@ internal sealed class TextPropertyEditor : PropertyEditor
                 : "The project has no images yet. Browse… copies one into its Assets folder.";
             foreach (var image in images)
             {
-                list.Items.Add(ImageRow(dir, image));
+                list.Items.Add(ImageRow(dir, image, Context.Profile()));
             }
         };
         list.ItemClick += (_, e) =>
@@ -318,10 +318,10 @@ internal sealed class TextPropertyEditor : PropertyEditor
         return button;
     }
 
-    private static StackPanel ImageRow(string projectDirectory, string xamlPath)
+    private static StackPanel ImageRow(string projectDirectory, string xamlPath, Core.Frameworks.FrameworkProfile? profile)
     {
         var thumbnail = new Image { Width = 32, Height = 32, Stretch = Stretch.Uniform };
-        if (Core.Assets.ProjectAssets.ToFilePath(projectDirectory, xamlPath) is { } file)
+        if (Core.Assets.ProjectAssets.ToFilePath(projectDirectory, xamlPath, profile) is { } file)
         {
             try
             {

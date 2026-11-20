@@ -74,15 +74,28 @@ public static class ProjectTemplates
         "Application", "Window", "UserControl", "AppBuilder", "AvaloniaXamlLoader", "IClassicDesktopStyleApplicationLifetime", "STAThread",
         // WinUI
         "Page", "WinRT", "LaunchActivatedEventArgs", "DispatcherQueue", "DispatcherQueueSynchronizationContext", "SynchronizationContext",
+        // MAUI
+        "MauiApp", "ContentPage", "ContentView", "IActivationState", "AppInfo", "MauiWinUIApplication", "Microsoft",
     };
 
-    /// <summary>The item kinds Project ▸ Add offers for a framework.</summary>
-    public static IReadOnlyList<ItemKind> ItemKindsFor(Frameworks.FrameworkProfile profile) =>
-        profile.Family == Frameworks.FrameworkFamily.WinUI ? [ItemKind.Window, ItemKind.Page, ItemKind.UserControl] : [ItemKind.Window, ItemKind.UserControl];
+    /// <summary>
+    /// The item kinds Project ▸ Add offers for a framework. In MAUI, a page is a ContentPage and a user control a ContentView,
+    /// and windows are made in code.
+    /// </summary>
+    public static IReadOnlyList<ItemKind> ItemKindsFor(Frameworks.FrameworkProfile profile) => profile.Family switch
+    {
+        Frameworks.FrameworkFamily.WinUI => [ItemKind.Window, ItemKind.Page, ItemKind.UserControl],
+        Frameworks.FrameworkFamily.Maui => [ItemKind.Page, ItemKind.UserControl],
+        _ => [ItemKind.Window, ItemKind.UserControl],
+    };
 
     /// <summary>The embedded item templates of a framework.</summary>
-    private static string ItemsFolder(Frameworks.FrameworkProfile profile) =>
-        profile.Family == Frameworks.FrameworkFamily.WinUI ? "WinUIItems/" : "Items/";
+    private static string ItemsFolder(Frameworks.FrameworkProfile profile) => profile.Family switch
+    {
+        Frameworks.FrameworkFamily.WinUI => "WinUIItems/",
+        Frameworks.FrameworkFamily.Maui => "MauiItems/",
+        _ => "Items/",
+    };
 
     /// <summary>A C# namespace for a project name: <c>My-App.Tools</c> → <c>My_App.Tools</c>.</summary>
     public static string NamespaceFor(string name) =>
@@ -93,7 +106,7 @@ public static class ProjectTemplates
     /// Returns the project path. Fails if the folder exists and isn't empty.
     /// </summary>
     /// <param name="framework">Which framework version to create it for (Avalonia 12 when omitted).</param>
-    /// <param name="packaged">WinUI: a packaged (MSIX) app, with a <c>Package.appxmanifest</c> and logos; else an unpackaged one.</param>
+    /// <param name="packaged">WinUI and MAUI: a packaged (MSIX) app, with a <c>Package.appxmanifest</c> and logos; else an unpackaged one.</param>
     public static string CreateApp(string parentDirectory, string name, string title, Frameworks.FrameworkProfile? framework = null, bool packaged = false)
     {
         framework ??= Frameworks.FrameworkProfile.Avalonia12;
@@ -125,13 +138,17 @@ public static class ProjectTemplates
             ["$packaging$"] = packaged ? "" : "    <WindowsPackageType>None</WindowsPackageType>\r\n",
             ["$packagename$"] = PackageName(name),
             ["$packagetitle$"] = System.Security.SecurityElement.Escape(string.IsNullOrWhiteSpace(title) ? name : title.Trim()),
+            // MAUI
+            ["$mauiversion$"] = frameworkVersion,
+            ["$dotnetversion$"] = (framework.Family == Frameworks.FrameworkFamily.Maui ? framework.MajorVersion : 10).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["$applicationid$"] = ApplicationId(name),
         };
 
-        var assets = Path.Combine(dir, "Assets");
+        var assets = Path.Combine(dir, framework.AssetsFolder);
         Directory.CreateDirectory(assets);
         foreach (var (file, text) in Templates(template + "/"))
         {
-            if (file == "Package.appxmanifest.template" && !packaged)
+            if (file.EndsWith("Package.appxmanifest.template", StringComparison.Ordinal) && !packaged)
             {
                 continue;
             }
@@ -140,14 +157,17 @@ public static class ProjectTemplates
             {
                 "Project.csproj.template" => $"{name}.csproj",
                 "global.json.template" => "global.json",
-                "Package.appxmanifest.template" => "Package.appxmanifest",
                 "gitignore" => ".gitignore",
+                _ when file.EndsWith(".appxmanifest.template", StringComparison.Ordinal) => file[..^".template".Length],
                 _ => file,
             };
-            Write(Path.Combine(dir, target), Replace(text, tokens));
+            var path = Path.Combine(dir, target.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            Write(path, Replace(text, tokens));
         }
 
-        if (packaged)
+        // A packaged WinUI app's manifest names these logos (plain squares to replace); MAUI makes its own from MauiIcon.
+        if (packaged && framework.Family == Frameworks.FrameworkFamily.WinUI)
         {
             // The logos the package manifest names (plain squares to replace with your own).
             foreach (var (file, size) in new[] { ("StoreLogo.png", 50), ("Square150x150Logo.png", 150), ("Square44x44Logo.png", 44) })
@@ -157,6 +177,13 @@ public static class ProjectTemplates
         }
 
         return Path.Combine(dir, $"{name}.csproj");
+    }
+
+    /// <summary>A MAUI application id: <c>com.companyname.{name}</c> in lowercase letters and digits (<c>My-App</c> → <c>com.companyname.myapp</c>).</summary>
+    internal static string ApplicationId(string projectName)
+    {
+        var name = new string(projectName.ToLowerInvariant().Where(char.IsAsciiLetterOrDigit).ToArray());
+        return "com.companyname." + (name.Length > 0 && char.IsAsciiLetter(name[0]) ? name : "app" + name);
     }
 
     /// <summary>A package identity name: letters, digits, <c>.</c> and <c>-</c>, 3 to 50 characters.</summary>
@@ -238,7 +265,7 @@ public static class ProjectTemplates
             return "Enter a C# class name (letters, digits and _; starts with a letter).";
         }
 
-        if (className is "Window" or "UserControl" or "Page")
+        if (className is "Window" or "UserControl" or "Page" or "ContentPage" or "ContentView")
         {
             return $"A class can't be called {className}: it would derive from itself. Try My{className}.";
         }

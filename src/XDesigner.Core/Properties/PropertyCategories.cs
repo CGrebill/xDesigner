@@ -26,21 +26,34 @@ public static class PropertyCategories
         (Common, ["Content", "Text", "Header", "Title", "IsChecked", "Value", "Minimum", "Maximum", "SelectedIndex", "PlaceholderText",
             "Watermark", "Source", "IsEnabled", "IsVisible", "ToolTip.Tip", "Tag",
             // WinUI
-            "IsOn", "OnContent", "OffContent", "Glyph", "IsOpen", "Message", "Severity", "Visibility", "ToolTipService.ToolTip", "Description"]),
+            "IsOn", "OnContent", "OffContent", "Glyph", "IsOpen", "Message", "Severity", "Visibility", "ToolTipService.ToolTip", "Description",
+            // MAUI
+            "Placeholder", "IsToggled", "Progress", "IsRunning", "Date", "Time", "ToolTipProperties.Text"]),
         (Layout, ["Width", "Height", "Grid.Row", "Grid.Column", "Grid.RowSpan", "Grid.ColumnSpan", "Canvas.Left", "Canvas.Top",
             "Canvas.Right", "Canvas.Bottom", "DockPanel.Dock", "Margin", "Padding", "HorizontalAlignment", "VerticalAlignment",
             "HorizontalContentAlignment", "VerticalContentAlignment", "MinWidth", "MinHeight", "MaxWidth", "MaxHeight", "Orientation",
             "Spacing", "RowDefinitions", "ColumnDefinitions", "RowSpacing", "ColumnSpacing", "LastChildFill", "Rows", "Columns",
             "ItemWidth", "ItemHeight", "Stretch", "StretchDirection", "ZIndex", "ClipToBounds",
             // WinUI
-            "Canvas.ZIndex", "MaximumRowsOrColumns", "SpinButtonPlacementMode"]),
+            "Canvas.ZIndex", "MaximumRowsOrColumns", "SpinButtonPlacementMode",
+            // MAUI
+            "WidthRequest", "HeightRequest", "MinimumWidthRequest", "MinimumHeightRequest", "MaximumWidthRequest", "MaximumHeightRequest",
+            "HorizontalOptions", "VerticalOptions", "AbsoluteLayout.LayoutBounds", "AbsoluteLayout.LayoutFlags", "FlexLayout.Grow",
+            "FlexLayout.Shrink", "FlexLayout.Basis", "FlexLayout.AlignSelf", "FlexLayout.Order", "Direction", "Wrap", "JustifyContent",
+            "AlignItems", "AlignContent", "Aspect"]),
         (Appearance, ["Background", "Foreground", "BorderBrush", "BorderThickness", "CornerRadius", "Opacity", "Fill", "Stroke",
             "StrokeThickness", "BoxShadow", "BackgroundSizing", "CaretBrush", "SelectionBrush", "SelectionForegroundBrush",
-            "PlaceholderForeground", "WatermarkForeground"]),
+            "PlaceholderForeground", "WatermarkForeground",
+            // MAUI
+            "BackgroundColor", "TextColor", "Color", "PlaceholderColor", "StrokeShape", "StrokeDashArray", "Shadow", "ThumbColor",
+            "OnColor", "MinimumTrackColor", "MaximumTrackColor", "ProgressColor"]),
         (Text, ["FontFamily", "FontSize", "FontWeight", "FontStyle", "FontStretch", "TextAlignment", "TextWrapping", "TextTrimming",
             "LineHeight", "LetterSpacing", "MaxLines", "MinLines", "PasswordChar", "TextDecorations",
             // WinUI
-            "CharacterSpacing", "IsTextSelectionEnabled", "PasswordRevealMode", "TextLineBounds", "OpticalMarginAlignment"]),
+            "CharacterSpacing", "IsTextSelectionEnabled", "PasswordRevealMode", "TextLineBounds", "OpticalMarginAlignment",
+            // MAUI
+            "FontAttributes", "FontAutoScalingEnabled", "HorizontalTextAlignment", "VerticalTextAlignment", "LineBreakMode",
+            "TextTransform", "TextType", "IsPassword", "Keyboard"]),
         (Window, ["Icon", "WindowStartupLocation", "SizeToContent", "CanResize", "CanMinimize", "CanMaximize", "WindowState",
             "SystemDecorations", "WindowDecorations", "Topmost", "ShowInTaskbar", "ShowActivated", "ExtendClientAreaToDecorationsHint",
             "ExtendClientAreaTitleBarHeightHint", "ClosingBehavior",
@@ -72,6 +85,12 @@ public static class PropertyCategories
         "CanBeScrollAnchor", "CanDrag", "AllowDrop", "ManipulationMode", "IsDoubleTapEnabled", "IsRightTapEnabled", "IsTapEnabled",
         "AllowFocusOnInteraction", "AllowFocusWhenDisabled", "IsTextScaleFactorEnabled", "Triggers", "Style", "DefaultStyleKey",
         "DefaultStyleResourceUri",
+
+        // MAUI: handler and platform plumbing.
+        "Handler", "Parent", "BindingContext", "Behaviors", "StyleClass", "class", "ControlTemplate", "Visual",
+        "AutomationId", "ClassId", "StyleId", "TranslationX", "TranslationY", "RotationX", "RotationY", "ScaleX", "ScaleY",
+        "AnchorX", "AnchorY", "InputTransparent", "CascadeInputTransparent", "IsInNativeLayout", "IsPlatformEnabled",
+        "Effects", "Window", "Navigation", "ItemsUpdatingScrollMode", "ItemSizingStrategy", "EmptyView",
     };
 
     private static readonly Dictionary<string, (string Category, int Order)> ByKey = Build();

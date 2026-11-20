@@ -72,7 +72,7 @@ public sealed class XamlDocument
     /// <summary>Parses XAML text. Throws <see cref="XmlException"/> for malformed XML.</summary>
     public static XamlDocument Parse(string text, Encoding? encoding = null)
     {
-        var xml = XDocument.Parse(text, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
+        var xml = ImplicitNamespaces.Parse(text, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
         var root = xml.Root ?? throw new XmlException("The document has no root element.");
         var newLine = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
 

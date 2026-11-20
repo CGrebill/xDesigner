@@ -13,8 +13,6 @@ namespace XDesigner.Core.Editing;
 /// </summary>
 public sealed partial class DesignerActions(XamlDocument document, UndoManager undo)
 {
-    private static readonly string[] SizeKeys = ["Width", "Height"];
-
     private readonly XamlDocument _document = document;
     private readonly UndoManager _undo = undo;
 
@@ -31,7 +29,7 @@ public sealed partial class DesignerActions(XamlDocument document, UndoManager u
         var commands = new List<IUndoableCommand>();
         var root = _document.Xml.Root!;
 
-        if (root.GetPrefixOfNamespace(XamlNs) is null)
+        if (root.PrefixOf(XamlNs) is null)
         {
             commands.Add(new SetAttributeCommand(_document.Root.Id, XNamespace.Xmlns + "x", XamlNs.NamespaceName));
         }
@@ -45,13 +43,13 @@ public sealed partial class DesignerActions(XamlDocument document, UndoManager u
         var name = NameGenerator.Next(_document, type.Name);
         var element = new XElement(elementNamespace + type.Name);
 
-        // Attribute order (§5.5): x:Name, attached layout, size, alignment/margin, then the rest.
+        // Attribute order (§5.5): x:Name, attached layout, size, alignment/margin, then the rest. The plan's placement is
+        // in canonical names (§7.1); toolbox defaults are already in the framework's own.
+        var vocabulary = _document.Profile.Layout;
+        string[] sizeKeys = [vocabulary.Width, vocabulary.Height];
         element.SetAttributeValue(XamlNs + "Name", name);
-        var layout = plan.Attributes.ToList();
-        foreach (var (key, value) in layout.Where(a => a.Key.LocalName.Contains('.')))
-        {
-            element.SetAttributeValue(key, value);
-        }
+        var layout = plan.Attributes.Select(a => new KeyValuePair<XName, string?>(a.Key, a.Value)).ToList();
+        vocabulary.Apply(element, layout.Where(a => a.Key.LocalName.Contains('.')));
 
         var defaults = item.Attributes.ToDictionary(a => a.Key, a => a.Value.Replace("{name}", name, StringComparison.Ordinal));
         if (plan.IsPositioned)
@@ -62,17 +60,14 @@ public sealed partial class DesignerActions(XamlDocument document, UndoManager u
             }
         }
 
-        foreach (var key in SizeKeys.Where(defaults.ContainsKey))
+        foreach (var key in sizeKeys.Where(defaults.ContainsKey))
         {
             element.SetAttributeValue(key, defaults[key]);
         }
 
-        foreach (var (key, value) in layout.Where(a => !a.Key.LocalName.Contains('.')))
-        {
-            element.SetAttributeValue(key, value);
-        }
+        vocabulary.Apply(element, layout.Where(a => !a.Key.LocalName.Contains('.')));
 
-        foreach (var (key, value) in defaults.Where(d => d.Key is not ("Width" or "Height")))
+        foreach (var (key, value) in defaults.Where(d => !sizeKeys.Contains(d.Key)))
         {
             element.SetAttributeValue(key, value);
         }
@@ -107,7 +102,7 @@ public sealed partial class DesignerActions(XamlDocument document, UndoManager u
     public static XNamespace ElementNamespace(XElement root, string xmlNamespace, string clrNamespace, out (string Prefix, string Namespace)? declaration)
     {
         declaration = null;
-        if (xmlNamespace == root.GetDefaultNamespace().NamespaceName)
+        if (xmlNamespace == root.DefaultNamespaceOf().NamespaceName)
         {
             return xmlNamespace; // the framework's own controls: no prefix
         }

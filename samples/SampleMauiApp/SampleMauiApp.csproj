@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Sample .NET MAUI app used to test the designer's MAUI render hosts: built for Windows on .NET 10 (MAUI 10) and on
+    .NET 11 (MAUI 11), from the same code. A page, a ContentView that uses the App's resources, a control written in code,
+    an image (MauiImage) and an AbsoluteLayout. Unpackaged, with an explicit Program.Main.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-windows10.0.19041.0;net11.0-windows10.0.19041.0</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>SampleMauiApp</RootNamespace>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <ApplicationTitle>Sample MAUI App</ApplicationTitle>
+    <ApplicationId>com.xdesigner.samplemauiapp</ApplicationId>
+    <WindowsPackageType>None</WindowsPackageType>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <Description>Sample .NET MAUI app used to test the designer.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <MauiImage Include="Resources\Images\*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" VersionOverride="$(Maui10Version)" Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'" />
+    <PackageReference Include="Microsoft.Maui.Controls" VersionOverride="$(Maui11Version)" Condition="'$(TargetFramework)' == 'net11.0-windows10.0.19041.0'" />
+  </ItemGroup>
+
+</Project>

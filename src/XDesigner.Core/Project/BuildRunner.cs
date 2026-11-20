@@ -25,20 +25,30 @@ public sealed record BuildResult(bool Succeeded, int ExitCode, IReadOnlyList<Bui
         TimeSpan.FromTicks(results.Sum(r => r.Duration.Ticks)));
 }
 
-/// <summary>One <c>dotnet build</c>: a solution or project, and the platform it needs (<c>x64</c> for WinUI), if any.</summary>
-public sealed record BuildStep(string Path, string? Platform);
+/// <summary>
+/// One <c>dotnet build</c>: a solution or project, the platform it needs (<c>x64</c> for WinUI) and the target framework to
+/// build (MAUI's Windows one), if any.
+/// </summary>
+public sealed record BuildStep(string Path, string? Platform, string? Framework = null);
 
 /// <summary><c>dotnet build</c> of the open project, with output streamed to the Build tab and diagnostics parsed (§11.2).</summary>
 public static partial class BuildRunner
 {
     /// <param name="platform">Passed as <c>-p:Platform</c> (WinUI projects have no AnyCPU build).</param>
-    public static async Task<BuildResult> BuildAsync(string projectPath, Action<string>? onLine = null, string? platform = null, CancellationToken cancellationToken = default)
+    /// <param name="framework">Passed as <c>-f</c> (a MAUI project is built for Windows only).</param>
+    public static async Task<BuildResult> BuildAsync(string projectPath, Action<string>? onLine = null, string? platform = null, string? framework = null, CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
         List<string> args = ["build", projectPath, "-c", "Debug", "-nologo", "-v:minimal", "-tl:off", "-p:GenerateFullPaths=true"];
         if (platform is not null)
         {
             args.Add($"-p:Platform={platform}");
+        }
+
+        if (framework is not null)
+        {
+            args.Add("-f");
+            args.Add(framework);
         }
 
         var result = await ProcessRunner.RunAsync(

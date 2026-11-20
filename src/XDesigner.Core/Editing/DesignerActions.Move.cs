@@ -113,17 +113,18 @@ public sealed partial class DesignerActions
             return false;
         }
 
-        var commands = new List<IUndoableCommand>();
+        // Canonical names (§7.1); the document's vocabulary is applied once, when the changes become commands.
+        var changes = new List<KeyValuePair<XName, string?>>();
         var sized = new HashSet<string>(StringComparer.Ordinal);
         if ((edges & (ResizeEdges.Left | ResizeEdges.Right)) != 0)
         {
-            commands.AddRange(SetIfChanged(node, "Width", Number(Math.Max(1, bounds.Width))));
+            changes.Add(new("Width", Number(Math.Max(1, bounds.Width))));
             sized.Add("Width");
         }
 
         if ((edges & (ResizeEdges.Top | ResizeEdges.Bottom)) != 0)
         {
-            commands.AddRange(SetIfChanged(node, "Height", Number(Math.Max(1, bounds.Height))));
+            changes.Add(new("Height", Number(Math.Max(1, bounds.Height))));
             sized.Add("Height");
         }
 
@@ -134,10 +135,10 @@ public sealed partial class DesignerActions
         {
             // Pin the size of the axis not being dragged too: a stretched control that becomes top-left aligned
             // would otherwise collapse to its content size on that axis.
-            commands.AddRange(PlacementCommands(node, plan, kind, reparent: false, bounds, layout.Find(id)?.Margin, sized));
+            changes.AddRange(PlacementChanges(node, plan, kind, reparent: false, bounds, layout.Find(id)?.Margin, sized));
         }
 
-        return Execute($"Resize {node.DisplayName}", commands);
+        return Execute($"Resize {node.DisplayName}", Commands(node, changes));
     }
 
     /// <summary>
@@ -264,31 +265,37 @@ public sealed partial class DesignerActions
     /// <param name="currentMargin">The element's laid-out margin: on a Canvas, its bounds include it, so the position doesn't.</param>
     /// <param name="alreadySized">Size attributes the caller sets itself (a resize), not to be pinned again.</param>
     private static List<IUndoableCommand> PlacementCommands(
+        ElementNode node, DropPlan plan, PanelKind? targetKind, bool reparent, RectDto? currentBounds, ThicknessDto? currentMargin = null) =>
+        Commands(node, PlacementChanges(node, plan, targetKind, reparent, currentBounds, currentMargin));
+
+    /// <summary><see cref="PlacementCommands"/> as canonical attribute changes (§7.1), for callers that add their own.</summary>
+    private static List<KeyValuePair<XName, string?>> PlacementChanges(
         ElementNode node, DropPlan plan, PanelKind? targetKind, bool reparent, RectDto? currentBounds, ThicknessDto? currentMargin = null,
         IReadOnlySet<string>? alreadySized = null)
     {
         var element = node.Element;
+        var vocabulary = node.Document.Profile.Layout;
         var planned = plan.Attributes.ToDictionary(a => a.Key, a => a.Value);
-        var commands = new List<IUndoableCommand>();
+        var changes = new List<KeyValuePair<XName, string?>>();
         var controlled = targetKind is { } k && PlacementControlled.TryGetValue(k, out var c) ? c : [];
 
         foreach (var (attribute, owner) in PanelAttachedProperties)
         {
-            if (element.Attribute(attribute) is not null && !planned.ContainsKey(attribute)
+            if (vocabulary.Get(element, attribute) is not null && !planned.ContainsKey(attribute)
                 && (controlled.Contains(attribute) || (reparent && owner != targetKind)))
             {
-                commands.Add(new SetAttributeCommand(node.Id, attribute, null));
+                changes.Add(new(attribute, null));
             }
         }
 
-        var hasDesignerPosition = (string?)element.Attribute("HorizontalAlignment") == "Left"
-            && (string?)element.Attribute("VerticalAlignment") == "Top"
+        var hasDesignerPosition = vocabulary.Get(element, "HorizontalAlignment") == "Left"
+            && vocabulary.Get(element, "VerticalAlignment") == "Top"
             && element.Attribute("Margin") is not null;
         if (hasDesignerPosition && !planned.ContainsKey("Margin"))
         {
-            commands.Add(new SetAttributeCommand(node.Id, "HorizontalAlignment", null));
-            commands.Add(new SetAttributeCommand(node.Id, "VerticalAlignment", null));
-            commands.Add(new SetAttributeCommand(node.Id, "Margin", null));
+            changes.Add(new("HorizontalAlignment", null));
+            changes.Add(new("VerticalAlignment", null));
+            changes.Add(new("Margin", null));
         }
         else if (targetKind == PanelKind.Canvas && currentMargin is { } m)
         {
@@ -299,26 +306,32 @@ public sealed partial class DesignerActions
 
         if (planned.ContainsKey("Margin") && currentBounds is { } b)
         {
-            if (alreadySized?.Contains("Width") != true && element.Attribute("Width") is null
-                && (string?)element.Attribute("HorizontalAlignment") is null or "Stretch")
+            if (alreadySized?.Contains("Width") != true && vocabulary.Get(element, "Width") is null
+                && vocabulary.Get(element, "HorizontalAlignment") is null or "Stretch")
             {
-                commands.Add(new SetAttributeCommand(node.Id, "Width", Number(b.Width)));
+                changes.Add(new("Width", Number(b.Width)));
             }
 
-            if (alreadySized?.Contains("Height") != true && element.Attribute("Height") is null
-                && (string?)element.Attribute("VerticalAlignment") is null or "Stretch")
+            if (alreadySized?.Contains("Height") != true && vocabulary.Get(element, "Height") is null
+                && vocabulary.Get(element, "VerticalAlignment") is null or "Stretch")
             {
-                commands.Add(new SetAttributeCommand(node.Id, "Height", Number(b.Height)));
+                changes.Add(new("Height", Number(b.Height)));
             }
         }
 
         foreach (var (attribute, value) in planned)
         {
-            commands.AddRange(SetIfChanged(node, attribute, value));
+            changes.Add(new(attribute, value));
         }
 
-        return commands;
+        return changes;
     }
+
+    /// <summary>Canonical attribute changes as commands, in the document's vocabulary, leaving out those that change nothing.</summary>
+    private static List<IUndoableCommand> Commands(ElementNode node, IEnumerable<KeyValuePair<XName, string?>> changes) =>
+        node.Document.Profile.Layout.Translate(node.Element, changes)
+            .Select(c => (IUndoableCommand)new SetAttributeCommand(node.Id, c.Name, c.Value))
+            .ToList();
 
     private static void Subtract(Dictionary<XName, string> planned, string attribute, double amount)
     {
@@ -328,9 +341,6 @@ public sealed partial class DesignerActions
             planned[attribute] = Math.Max(0, Math.Round(value - amount)).ToString(CultureInfo.InvariantCulture);
         }
     }
-
-    private static IEnumerable<IUndoableCommand> SetIfChanged(ElementNode node, XName attribute, string value) =>
-        (string?)node.Element.Attribute(attribute) == value ? [] : [new SetAttributeCommand(node.Id, attribute, value)];
 
     private static List<XElement> ObjectChildren(XElement container) =>
         container.Elements().Where(RenderCopyBuilder.IsObjectElement).ToList();

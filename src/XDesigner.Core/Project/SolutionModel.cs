@@ -40,12 +40,12 @@ public sealed class SolutionModel
 
     /// <summary>
     /// What Build runs: <see cref="BuildTarget"/>, or each project on its own when one needs a platform (WinUI has no AnyCPU
-    /// build, and a solution's platforms rarely map it), each WinUI project with its platform.
+    /// build, and a solution's platforms rarely map it) or a target framework (MAUI is built for Windows only).
     /// </summary>
     public IReadOnlyList<BuildStep> BuildSteps =>
-        SolutionPath is not null && Projects.Any(p => p.Info.Platform is not null)
-            ? Projects.Select(p => new BuildStep(p.Info.ProjectPath, p.Info.Platform)).ToList()
-            : [new BuildStep(BuildTarget, SolutionPath is null ? Projects[0].Info.Platform : null)];
+        SolutionPath is not null && Projects.Any(p => p.Info.Platform is not null || p.Info.BuildFramework is not null)
+            ? Projects.Select(p => new BuildStep(p.Info.ProjectPath, p.Info.Platform, p.Info.BuildFramework)).ToList()
+            : [SolutionPath is null ? new BuildStep(BuildTarget, Projects[0].Info.Platform, Projects[0].Info.BuildFramework) : new BuildStep(BuildTarget, null)];
 
     public IEnumerable<SolutionProject> DesignableProjects => Projects.Where(p => p.IsDesignable);
 

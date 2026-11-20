@@ -44,7 +44,12 @@ public sealed partial class ShadowHostFolder : IDisposable
     /// Creates a fresh shadow folder under <paramref name="root"/> for one host start: <paramref name="hostDirectory"/>'s
     /// files, plus every file of <paramref name="userOutputDirectory"/> the host doesn't have itself.
     /// </summary>
-    public static ShadowHostFolder Prepare(string hostDirectory, string userOutputDirectory, string root)
+    /// <param name="resourceIndex">
+    /// For a MAUI host (§14.6): the project's resource index (<c>{Project}.pri</c>) to use as the host's
+    /// (<c>{Host}.pri</c>). MAUI writes images as scale-qualified files (<c>logo.scale-200.png</c>) that only the project's
+    /// index maps <c>logo.png</c> to; both apps keep their WinUI App at the same path, so the index fits the host too.
+    /// </param>
+    public static ShadowHostFolder Prepare(string hostDirectory, string userOutputDirectory, string root, (string ProjectName, string HostName)? resourceIndex = null)
     {
         Directory.CreateDirectory(root);
         RemoveUnused(root);
@@ -71,6 +76,13 @@ public sealed partial class ShadowHostFolder : IDisposable
                 {
                     File.Copy(file, target);
                 }
+            }
+
+            if (resourceIndex is { } index && File.Exists(System.IO.Path.Combine(userOutputDirectory, index.ProjectName + ".pri")))
+            {
+                var hostIndex = System.IO.Path.Combine(path, index.HostName + ".pri");
+                File.Delete(hostIndex); // a hard link: replace the link, not the installed file
+                File.Copy(System.IO.Path.Combine(userOutputDirectory, index.ProjectName + ".pri"), hostIndex);
             }
 
             return new ShadowHostFolder(path, lockFile);

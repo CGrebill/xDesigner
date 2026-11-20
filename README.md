@@ -1,7 +1,6 @@
 # xDesigner
 
-**A visual designer for [Avalonia UI](https://avaloniaui.net/) 11 and 12 and WinUI 3, in the spirit of the classic WinForms designer.**
-.NET MAUI is next.
+**A visual designer for [Avalonia UI](https://avaloniaui.net/) 11 and 12, WinUI 3 and .NET MAUI 10 and 11, in the spirit of the classic WinForms designer.**
 Drag controls onto a form, set their properties in a properties window, double-click a button to write its click
 handler, and press Run. You write only C#; xDesigner writes the XAML.
 
@@ -13,12 +12,14 @@ handler, and press Run. You write only C#; xDesigner writes the XAML.
 ## Features
 
 - **Real rendering.** Forms are drawn by their framework itself, in a separate process: Avalonia 11 or 12 (the version
-  your project uses) or WinUI 3, with your app's theme, resources, fonts, images and custom controls, so what you see is
-  what runs.
+  your project uses), WinUI 3, or .NET MAUI 10 or 11 (through MAUI's Windows handlers, with your own MauiProgram), with
+  your app's theme, resources, fonts, images and custom controls, so what you see is what runs.
 - **WinUI 3** desktop apps, unpackaged or packaged (MSIX): windows, pages and user controls; Run registers a packaged app
   as Visual Studio does (with Developer Mode on).
+- **.NET MAUI** apps: content pages and content views, including MAUI 11's files without namespace declarations; built
+  and run for Windows (no Android or iOS workloads needed).
 - **Whole solutions.** Open a `.sln` or `.slnx` and every project is there in **Solution Explorer**, each with its own
-  framework (Avalonia 11, Avalonia 12 and WinUI projects side by side work). Build errors are in the **Error
+  framework (Avalonia, WinUI and MAUI projects side by side work). Build errors are in the **Error
   List**; double-click one to go to it.
 - **Toolbox** with the framework's built-in controls and the custom controls of your project.
 - **Drag-and-drop layout** that understands panels: Grid cells, Canvas positions, StackPanel and WrapPanel order,
@@ -47,8 +48,9 @@ Windows SmartScreen may warn that the installer is from an unknown publisher, be
 
 **Requirements**
 - Windows 10 version 2004 or later, or Windows 11, x64. Windows on ARM runs it through emulation.
-- To build and run projects: the [.NET 10 SDK](https://dotnet.microsoft.com/download). Opening and editing `.axaml`
-  files works without it.
+- To build and run projects: the [.NET SDK](https://dotnet.microsoft.com/download) your project uses (10 or 11), and for
+  .NET MAUI projects its Windows workload (`dotnet workload install maui-windows`, in an administrator terminal).
+  Opening and editing files works without them.
 
 **Uninstall** from *Settings › Apps*. The uninstaller removes the program, its shortcuts, and everything xDesigner
 stored for itself (`%LOCALAPPDATA%\xDesigner`: settings and the error log). Your projects are never touched.
@@ -85,12 +87,13 @@ The [user guide](docs/user-guide.md) covers everything else.
 xDesigner is for designing forms visually. It doesn't author data bindings, styles, resources, control templates or
 animations; bindings and resources already in a file are kept and shown read-only (WinUI's compiled `{x:Bind}`
 bindings render without their values). It designs Avalonia 11 (11.1 or later) and 12 desktop apps (Windows, macOS and
-Linux run them) and WinUI 3 apps on the Windows App SDK; .NET MAUI projects are recognised but can't be designed yet.
-The designer itself runs on Windows only.
+Linux run them), WinUI 3 apps on the Windows App SDK, and .NET MAUI 10 and 11 apps as they look on Windows (Shell
+navigation isn't designed visually). The designer itself runs on Windows only.
 
 ## Build from source
 
-You need Windows and the .NET 10 SDK (`global.json` picks it).
+You need Windows, the .NET 11 SDK (`global.json` picks it; it builds the .NET 10 projects too) and its MAUI workload
+(`dotnet workload install maui-windows`, from an administrator terminal), which the MAUI renderers and sample need.
 
 ```powershell
 dotnet build xDesigner.slnx

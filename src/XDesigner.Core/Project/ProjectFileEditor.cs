@@ -19,10 +19,14 @@ public static class ProjectFileEditor
     /// </summary>
     public static string AssetsItemFor(FrameworkProfile profile) => profile.ResourceItemName switch
     {
-        "Content" => $"<Content Include=\"{AssetsInclude}\" Exclude=\"@(Content)\" CopyToOutputDirectory=\"PreserveNewest\" />",
-        { } item => $"<{item} Include=\"{AssetsInclude}\" />",
+        "Content" => $"<Content Include=\"{AssetsIncludeFor(profile)}\" Exclude=\"@(Content)\" CopyToOutputDirectory=\"PreserveNewest\" />",
+        { } item => $"<{item} Include=\"{AssetsIncludeFor(profile)}\" />",
         null => throw new NotSupportedException($"{profile.DisplayName} projects don't have an Assets item."),
     };
+
+    /// <summary>The images folder as an item pattern: <c>Assets\**</c>; MAUI <c>Resources\Images\*</c> (its images folder is flat).</summary>
+    public static string AssetsIncludeFor(FrameworkProfile profile) =>
+        profile.Family == FrameworkFamily.Maui ? $@"{profile.AssetsFolder}\*" : $@"{profile.AssetsFolder}\**";
 
     /// <summary>
     /// Makes sure the project ships <c>Assets/</c>, adding <see cref="AssetsItemFor"/> in its own item group when nothing
@@ -45,7 +49,7 @@ public static class ProjectFileEditor
             throw new InvalidDataException($"{name} isn't UTF-8 text, so the designer won't change it. Add {item} to it yourself.");
         }
 
-        if (CoversAssets(XDocument.Parse(text), itemName))
+        if (CoversAssets(XDocument.Parse(text), itemName, profile.AssetsFolder))
         {
             return false;
         }
@@ -69,7 +73,7 @@ public static class ProjectFileEditor
             check = new XDocument();
         }
 
-        if (!CoversAssets(check, itemName))
+        if (!CoversAssets(check, itemName, profile.AssetsFolder))
         {
             throw new InvalidDataException($"The designer couldn't add the Assets folder to {name} safely. Add {item} to it yourself.");
         }
@@ -108,11 +112,14 @@ public static class ProjectFileEditor
         return before + separator + group + newline + text[end..];
     }
 
-    /// <summary>True when an item of <paramref name="itemName"/> includes the Assets folder (<c>Assets\**</c>, <c>Assets/**/*</c>, …).</summary>
-    public static bool CoversAssets(XDocument project, string itemName = "AvaloniaResource") =>
+    /// <summary>
+    /// True when an item of <paramref name="itemName"/> includes all of the images folder (<c>Assets\**</c>, <c>Assets/**/*</c>,
+    /// MAUI <c>Resources\Images\*</c>…).
+    /// </summary>
+    public static bool CoversAssets(XDocument project, string itemName = "AvaloniaResource", string folder = "Assets") =>
         project.Descendants().Where(e => e.Name.LocalName == itemName).Any(e =>
             ((string?)e.Attribute("Include") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Any(part => part.Replace('/', '\\').StartsWith(@"Assets\**", StringComparison.OrdinalIgnoreCase)));
+                .Any(part => part.Replace('/', '\\').StartsWith(folder + @"\*", StringComparison.OrdinalIgnoreCase)));
 
     /// <summary>The indentation of the project's first child element (two spaces when it can't tell).</summary>
     private static string IndentOf(string text)

@@ -157,6 +157,31 @@ public sealed class ProjectTemplateTests : IDisposable
         Assert.Contains("Title=\"Hello {WinUI} &amp; co\"", File.ReadAllText(Path.Combine(info.Directory, "MainWindow.xaml")));
     }
 
+
+    /// <summary>A new MAUI project, unpackaged or packaged, builds for Windows as created. Needs the SDK and the MAUI workload.</summary>
+    [Theory]
+    [InlineData(Core.Frameworks.FrameworkId.Maui11, false)]
+    [InlineData(Core.Frameworks.FrameworkId.Maui11, true)]
+    [InlineData(Core.Frameworks.FrameworkId.Maui10, false)]
+    [Trait("Category", "Slow")]
+    public async Task CreatedMauiApp_Builds(Core.Frameworks.FrameworkId framework, bool packaged)
+    {
+        var profile = Core.Frameworks.FrameworkProfile.For(framework);
+        var project = ProjectTemplates.CreateApp(_dir, "HelloMaui", "Hello MAUI", profile, packaged);
+        var info = await ProjectReader.ReadAsync(project, TestContext.Current.CancellationToken);
+        var page = ProjectTemplates.CreateItem(info, Path.Combine(info.Directory, "Pages"), "SettingsPage", ItemKind.Page, profile);
+        ProjectTemplates.CreateItem(info, Path.Combine(info.Directory, "Views"), "Card", ItemKind.UserControl, profile);
+
+        var result = await BuildRunner.BuildAsync(project, platform: info.Platform, framework: info.BuildFramework, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.Succeeded, string.Join(Environment.NewLine, result.Errors));
+        Assert.Equal($"net{profile.MajorVersion}.0-windows10.0.19041.0", info.BuildFramework);
+        Assert.Equal(packaged, info.IsPackaged);
+        Assert.True(File.Exists(info.TargetPath), info.TargetPath);
+        Assert.Contains("<ContentPage", File.ReadAllText(page), StringComparison.Ordinal);
+        Assert.Equal(profile, info.DetectFramework().Profile);
+        Assert.True(Directory.Exists(Path.Combine(info.Directory, "Resources", "Images")));
+    }
     [Fact]
     public void WinUIItems_AreXamlFiles_AndPagesAreWinUIOnly()
     {
@@ -182,6 +207,8 @@ public sealed class ProjectTemplateTests : IDisposable
         Assert.Equal(Property("AvaloniaVersion"), Core.Frameworks.FrameworkProfile.Avalonia12.TemplateVersion);
         Assert.Equal(Property("Avalonia11Version"), Core.Frameworks.FrameworkProfile.Avalonia11.TemplateVersion);
         Assert.Equal(Property("WindowsAppSdkVersion"), Core.Frameworks.FrameworkProfile.WinUI3.TemplateVersion);
+        Assert.Equal(Property("Maui10Version"), Core.Frameworks.FrameworkProfile.Maui10.TemplateVersion);
+        Assert.Equal(Property("Maui11Version"), Core.Frameworks.FrameworkProfile.Maui11.TemplateVersion);
     }
 
     private static string RepoRoot()

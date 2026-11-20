@@ -71,6 +71,8 @@
     <RenderHostProject Include="..\XDesigner.RenderHost.Avalonia\XDesigner.RenderHost.Avalonia12.csproj" Folder="avalonia12" Platform="AnyCPU" />
     <RenderHostProject Include="..\XDesigner.RenderHost.Avalonia11\XDesigner.RenderHost.Avalonia11.csproj" Folder="avalonia11" Platform="AnyCPU" />
     <RenderHostProject Include="..\XDesigner.RenderHost.WinUI\XDesigner.RenderHost.WinUI.csproj" Folder="winui3" Platform="x64" />
+    <RenderHostProject Include="..\XDesigner.RenderHost.Maui\XDesigner.RenderHost.Maui11.csproj" Folder="maui11" Platform="x64" />
+    <RenderHostProject Include="..\XDesigner.RenderHost.Maui10\XDesigner.RenderHost.Maui10.csproj" Folder="maui10" Platform="x64" />
   </ItemGroup>
   <!-- Batched: runs once per render host (Outputs names each one). -->
   <Target Name="CopyRenderHosts" AfterTargets="Build" Outputs="%(RenderHostProject.Identity)">

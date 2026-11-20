@@ -1,6 +1,6 @@
 # Builds the xDesigner release: tests, a self-contained publish of the app with its render host, and the installer.
 # Output: artifacts\installer\xDesigner-<version>-x64-setup.exe (+ .sha256), artifacts\publish\xDesigner (the files).
-# Needs the .NET 10 SDK and Inno Setup 6 (https://jrsoftware.org/isinfo.php; ISCC.exe is found in the usual places).
+# Needs the .NET 11 SDK with the MAUI workload and Inno Setup 6 (https://jrsoftware.org/isinfo.php; ISCC.exe is found in the usual places).
 # Usage: powershell -ExecutionPolicy Bypass -File build\publish.ps1 [-SkipTests]
 param([switch]$SkipTests)
 
@@ -36,7 +36,8 @@ Invoke-Checked "Publish" { dotnet publish src\XDesigner.App -c Release -o $publi
 
 # One render host per framework version, in renderhosts\{folder} (FrameworkProfile.HostFolder/HostExecutable).
 $renderHosts = "renderhosts\avalonia12\XDesigner.RenderHost.Avalonia12.exe", "renderhosts\avalonia11\XDesigner.RenderHost.Avalonia11.exe",
-    "renderhosts\winui3\XDesigner.RenderHost.WinUI.exe"
+    "renderhosts\winui3\XDesigner.RenderHost.WinUI.exe", "renderhosts\maui11\XDesigner.RenderHost.Maui11.exe",
+    "renderhosts\maui10\XDesigner.RenderHost.Maui10.exe"
 foreach ($required in @("xDesigner.exe", "xDesigner.pri", "LICENSE.txt", "THIRD-PARTY-NOTICES.txt") + $renderHosts) {
     if (-not (Test-Path (Join-Path $publishDir $required))) { throw "The publish output has no $required." }
 }

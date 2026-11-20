@@ -282,8 +282,11 @@ public sealed class RenderHostManager : IAsyncDisposable
             return (executable, key.AssemblyPath);
         }
 
+        (string, string)? resourceIndex = key.Profile.HostUsesProjectResourceIndex
+            ? (Path.GetFileNameWithoutExtension(key.AssemblyPath), Path.GetFileNameWithoutExtension(key.Profile.HostExecutable))
+            : null;
         var shadow = await Task.Run(() => ShadowHostFolder.Prepare(
-            Path.GetDirectoryName(executable)!, Path.GetDirectoryName(key.AssemblyPath)!, _shadowRoot)).ConfigureAwait(false);
+            Path.GetDirectoryName(executable)!, Path.GetDirectoryName(key.AssemblyPath)!, _shadowRoot, resourceIndex)).ConfigureAwait(false);
         ShadowHostFolder? previous;
         lock (_lock)
         {

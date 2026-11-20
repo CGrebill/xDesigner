@@ -58,7 +58,7 @@ public sealed class FrameworkTests : IDisposable
         Write(@"bin\App.deps.json", """{ "libraries": { "Avalonia/0.10.21": {} } }""");
         var old = FrameworkDetector.FromBuildOutput(target);
         Assert.Equal((FrameworkFamily.Avalonia, (FrameworkProfile?)null), (old.Family, old.Profile));
-        Assert.Contains("supports Avalonia 11 and Avalonia 12", old.Problem("App"));
+        Assert.Contains("supports Avalonia 11 and 12, WinUI 3 and .NET MAUI 10 and 11.", old.Problem("App"));
     }
 
     [Theory]
@@ -81,8 +81,9 @@ public sealed class FrameworkTests : IDisposable
     [Fact]
     public void UnsupportedFrameworks_AreExplained()
     {
-        var maui = new DetectedFramework(FrameworkFamily.Maui, new Version(10, 0), FrameworkProfile.Maui10);
-        Assert.Contains("coming in a later version", maui.Problem("Shop"));
+        var maui9 = new DetectedFramework(FrameworkFamily.Maui, new Version(9, 0), null);
+        Assert.Equal("Shop uses .NET MAUI 9.0. The designer supports Avalonia 11 and 12, WinUI 3 and .NET MAUI 10 and 11.", maui9.Problem("Shop"));
+        Assert.Null(new DetectedFramework(FrameworkFamily.Maui, new Version(11, 0), FrameworkProfile.Maui11).Problem("Shop"));
         Assert.Null(new DetectedFramework(FrameworkFamily.WinUI, null, FrameworkProfile.WinUI3).Problem("Shop"));
         Assert.Null(new DetectedFramework(FrameworkFamily.Avalonia, new Version(12, 1), FrameworkProfile.Avalonia12).Problem("Shop"));
         Assert.Contains("doesn't use a UI framework", DetectedFramework.Unknown.Problem("Shop"));
@@ -121,7 +122,7 @@ public sealed class FrameworkTests : IDisposable
     public void Profiles_KnowTheirNamespacesAndHosts()
     {
         Assert.All(FrameworkProfile.All, p => Assert.Equal(p, FrameworkProfile.For(p.Id)));
-        Assert.Equal([FrameworkId.Avalonia12, FrameworkId.Avalonia11, FrameworkId.WinUI3], FrameworkProfile.All.Where(p => p.IsSupported).Select(p => p.Id));
+        Assert.Equal([FrameworkId.Avalonia12, FrameworkId.Avalonia11, FrameworkId.WinUI3, FrameworkId.Maui10, FrameworkId.Maui11], FrameworkProfile.All.Where(p => p.IsSupported).Select(p => p.Id));
         Assert.Equal(FrameworkProfile.Avalonia11, FrameworkProfile.For(FrameworkFamily.Avalonia, 11));
         Assert.Null(FrameworkProfile.For(FrameworkFamily.Avalonia, 10));
         Assert.Equal(FrameworkFamily.Maui, FrameworkProfile.FamilyOf(XNamespace.Get(FrameworkProfile.MauiNamespace)));

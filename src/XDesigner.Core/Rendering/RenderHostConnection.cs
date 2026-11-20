@@ -292,7 +292,15 @@ public sealed class RenderHostConnection : IAsyncDisposable
 
         public async Task<string> ReadAllAsync()
         {
-            await Task.WhenAny(_done, Task.Delay(1000)).ConfigureAwait(false);
+            try
+            {
+                await _done.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                // Whatever arrived so far.
+            }
+
             return Snapshot();
         }
     }

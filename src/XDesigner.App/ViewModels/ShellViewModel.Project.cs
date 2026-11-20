@@ -229,16 +229,16 @@ public sealed partial class ShellViewModel
         try
         {
             // A solution with WinUI projects is built project by project, each with its platform (SolutionModel.BuildSteps).
-            var steps = solution?.BuildSteps ?? [new BuildStep(project.ProjectPath, project.Platform)];
+            var steps = solution?.BuildSteps ?? [new BuildStep(project.ProjectPath, project.Platform, project.BuildFramework)];
             var results = new List<BuildResult>();
             foreach (var step in steps)
             {
                 if (steps.Count > 1)
                 {
-                    AppendBuild($"Building {Path.GetFileName(step.Path)}{(step.Platform is { } p ? $" ({p})" : "")}…");
+                    AppendBuild($"Building {Path.GetFileName(step.Path)}{((step.Platform ?? step.Framework) is { } detail ? $" ({detail})" : "")}…");
                 }
 
-                results.Add(await BuildRunner.BuildAsync(step.Path, line => RunOnUi(() => AppendBuild(line)), platform: step.Platform));
+                results.Add(await BuildRunner.BuildAsync(step.Path, line => RunOnUi(() => AppendBuild(line)), platform: step.Platform, framework: step.Framework));
             }
 
             result = BuildResult.Combine(results);

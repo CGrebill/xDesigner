@@ -21,12 +21,17 @@ All notable changes to xDesigner are listed here. Versions follow [Semantic Vers
   items have the collection editor; images are added as `ms-appx:///Assets/…` content. New project creates a WinUI 3 app
   (unpackaged or packaged), Project › Add page… a page. Builds pass the platform WinUI needs, and Run starts a packaged
   app as a registered package (with Developer Mode on) or its exe directly.
-- The installer lets you choose which renderers to install (Avalonia 12, Avalonia 11, WinUI 3).
-- .NET MAUI projects are recognised and explained (designing them comes in a later version).
+- **.NET MAUI 10 and 11.** MAUI projects can be designed: content pages and content views are drawn by MAUI itself (the
+  project's own MauiProgram, App styles, fonts, images and controls, through MAUI's Windows handlers). Placement writes
+  MAUI's attributes (WidthRequest, HorizontalOptions, AbsoluteLayout.LayoutBounds); MAUI 11 files without namespace
+  declarations open, edit and save as written; images are added as MauiImages. Builds and Run target Windows only (no
+  Android or iOS workloads needed). New project creates a MAUI 10 or 11 app (unpackaged or packaged).
+- The installer lets you choose which renderers to install (Avalonia 12, Avalonia 11, WinUI 3, .NET MAUI 11 and 10).
 
 ### Changed
 - Render hosts live in `renderhosts\{framework}` next to the app (one per framework version) and share their
   framework-free code (`XDesigner.RenderHost.Common`); the render protocol is version 6.
+- xDesigner is built with the .NET 11 SDK (its MAUI 11 renderer needs it); building it also needs the MAUI workload.
 
 ### Fixed (from a full code review of 1.0.0)
 - A property value still being typed was applied to the wrong file when another file was opened or dropped on the

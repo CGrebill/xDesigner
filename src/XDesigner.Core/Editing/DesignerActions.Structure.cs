@@ -114,7 +114,9 @@ public sealed partial class DesignerActions
         var into = parentElement != parent.Element ? parentElement.Name : null;
 
         var wrapper = new XElement(ElementNamespace(_document.Xml.Root!, wrapperType.XmlNamespace, wrapperType.ClrNamespace, out _) + wrapperType.Name);
-        foreach (var attribute in PlacementAttributes)
+        // In the document's own spelling (MAUI: AbsoluteLayout.LayoutBounds, HorizontalOptions…).
+        var placementAttributes = PlacementAttributes.Select(a => _document.Profile.Layout.NameOf(a)).Distinct().ToList();
+        foreach (var attribute in placementAttributes)
         {
             if (nodes[0].Element.Attribute(attribute) is { } a)
             {
@@ -126,7 +128,7 @@ public sealed partial class DesignerActions
         var commands = new List<IUndoableCommand>();
         foreach (var node in nodes)
         {
-            commands.AddRange(PlacementAttributes.Where(a => node.Element.Attribute(a) is not null)
+            commands.AddRange(placementAttributes.Where(a => node.Element.Attribute(a) is not null)
                 .Select(a => (IUndoableCommand)new SetAttributeCommand(node.Id, a, null)));
         }
 

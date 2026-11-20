@@ -9,12 +9,13 @@ $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $nuget = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE ".nuget\packages" }
 
 # Packages that are only used while building, or whose files are kept out of the app (see XDesigner.App.csproj).
-$notShipped = '^(Avalonia\.BuildServices|Microsoft\.CodeAnalysis\.Analyzers|Microsoft\.Windows\.SDK\.BuildTools.*|Microsoft\.Windows\.AI\.MachineLearning|Microsoft\.WindowsAppSDK\.(AI|ML|Search|Widgets)|.*\.NativeAssets\.(Linux|macOS|WebAssembly))$'
+$notShipped = '^(Avalonia\.BuildServices|Microsoft\.Maui\.Controls\.Build\.Tasks|Microsoft\.Maui\.Resizetizer|Microsoft\.CodeAnalysis\.Analyzers|Microsoft\.Windows\.SDK\.BuildTools.*|Microsoft\.Windows\.AI\.MachineLearning|Microsoft\.WindowsAppSDK\.(AI|ML|Search|Widgets)|.*\.NativeAssets\.(Linux|macOS|WebAssembly))$'
 
 # The app and every render host. Keyed by name and version: the Avalonia 11 and 12 hosts ship different versions.
 $packages = @{}
 $assetsFiles = "src\XDesigner.App\obj\project.assets.json", "src\XDesigner.RenderHost.Avalonia\obj\project.assets.json", "src\XDesigner.RenderHost.Avalonia11\obj\project.assets.json",
-    "src\XDesigner.RenderHost.WinUI\obj\project.assets.json"
+    "src\XDesigner.RenderHost.WinUI\obj\project.assets.json", "src\XDesigner.RenderHost.Maui\obj\project.assets.json",
+    "src\XDesigner.RenderHost.Maui10\obj\project.assets.json"
 foreach ($assets in $assetsFiles) {
     $json = Get-Content (Join-Path $root $assets) -Raw | ConvertFrom-Json
     foreach ($library in $json.libraries.PSObject.Properties) {
