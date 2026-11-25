@@ -5,6 +5,8 @@ All notable changes to xDesigner are listed here. Versions follow [Semantic Vers
 ## [Unreleased]
 
 ### Fixed
+- **WinUI:** on a slow PC (or one without a graphics card), images could be drawn blank, because the design was captured
+  before WinUI had painted them. It's now drawn until the picture settles (up to 1.5 s, only when the form has images).
 - **WinUI:** an image of the project's that took more than 1.5 s to load stayed blank in the designer until the next build.
   It's now waited for again on the next render; only a web image that times out is given up on. Images that can't be
   loaded, or that take too long, are now reported in the renderer's output.
