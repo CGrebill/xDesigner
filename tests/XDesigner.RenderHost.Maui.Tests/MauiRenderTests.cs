@@ -53,10 +53,12 @@ public class MauiRenderTests(MauiHostsFixture fixture)
                   select (x, y);
         Assert.NotEmpty(red); // the 8×8 picture, drawn somewhere in its 32×32 box
         var card = all.Single(e => e.TypeName == "SampleMauiApp.Controls.ContactCard").Bounds;
-        var (b, g, r) = Rgb(RenderXaml.Pixel(result, card.X + 1, card.Y + (card.Height / 2)));
-        Assert.InRange(b, 0xD4 - 40, 0xD4); // the App's #0078D4, blended a little at the stroke's edge
-        Assert.InRange(g, 0x78 - 30, 0x78);
-        Assert.InRange(r, 0, 20);
+        // The App's #0078D4 on the stroke. Anti-aliasing blends its edge pixels with what's either side, differently per
+        // renderer (GitHub's runners draw in software), so look across the stroke for a pixel close to it.
+        var across = Enumerable.Range(0, 4).Select(dx => Rgb(RenderXaml.Pixel(result, card.X + dx, card.Y + (card.Height / 2)))).ToList();
+        Assert.True(
+            across.Any(p => Math.Abs(p.B - 0xD4) <= 40 && Math.Abs(p.G - 0x78) <= 30 && p.R <= 40),
+            $"No pixel near #0078D4 across the card's stroke: {string.Join(", ", across.Select(p => $"rgb({p.R},{p.G},{p.B})"))}");
     }
 
     [Fact]

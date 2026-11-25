@@ -159,8 +159,9 @@ internal static class FrameCapture
             {
                 var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 RoutedEventHandler opened = (_, _) => loaded.TrySetResult();
-                ExceptionRoutedEventHandler failed = (_, _) =>
+                ExceptionRoutedEventHandler failed = (_, e) =>
                 {
+                    Console.Error.WriteLine($"The image {uri} couldn't be loaded: {e.ErrorMessage}");
                     Unavailable.Add(uri);
                     loaded.TrySetResult();
                 };
@@ -177,8 +178,9 @@ internal static class FrameCapture
             {
                 var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 Windows.Foundation.TypedEventHandler<SvgImageSource, SvgImageSourceOpenedEventArgs> opened = (_, _) => loaded.TrySetResult();
-                Windows.Foundation.TypedEventHandler<SvgImageSource, SvgImageSourceFailedEventArgs> failed = (_, _) =>
+                Windows.Foundation.TypedEventHandler<SvgImageSource, SvgImageSourceFailedEventArgs> failed = (_, e) =>
                 {
+                    Console.Error.WriteLine($"The image {svgUri} couldn't be loaded: {e.Status}");
                     Unavailable.Add(svgUri);
                     loaded.TrySetResult();
                 };
@@ -202,11 +204,16 @@ internal static class FrameCapture
         }
         catch (TimeoutException)
         {
-            // Draw without the images still loading, and don't wait for them again: a missing file or an offline URL
-            // would add the whole wait to every render.
+            // Draw without the images still loading. An offline URL isn't waited for again (it would add the whole wait
+            // to every render); a file of the app's is: a missing one fails at once, so this one was only slow to decode,
+            // and giving up on it for good would leave it blank until the next build.
             foreach (var (uri, done) in pending.Where(p => !p.Done.IsCompleted))
             {
-                Unavailable.Add(uri);
+                Console.Error.WriteLine($"The image {uri} took longer than {ImageWait.TotalSeconds:0.#} s to load; drawing without it.");
+                if (uri.Scheme is "http" or "https")
+                {
+                    Unavailable.Add(uri);
+                }
             }
         }
         finally
@@ -217,6 +224,6 @@ internal static class FrameCapture
         return showing;
     }
 
-    /// <summary>Images that failed or timed out: renders don't wait for them again (for this host process, so until a build).</summary>
+    /// <summary>Images that failed, and web images that timed out: renders don't wait for them again (for this host process, so until a build).</summary>
     private static readonly HashSet<Uri> Unavailable = [];
 }

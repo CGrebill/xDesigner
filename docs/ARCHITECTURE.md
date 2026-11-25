@@ -470,7 +470,7 @@ that never shows a window:
   size (keeping its own Width, Min/Max and Margin), in a Viewbox sized at the requested scale (zoom is crisp;
   RasterizationScale doesn't change a RenderTargetBitmap's size), inside a Border with the theme's page background, on a
   canvas in a cloaked, never-activated tool window. After layout it waits for images (and SVGs) to decode and reach the
-  screen, at most 1.5 s, and never again for one that failed or timed out; then it captures with `RenderTargetBitmap`.
+  screen, at most 1.5 s, and never again for one that failed or a web image that timed out (a slow file is waited for again); then it captures with `RenderTargetBitmap`.
   Layout comes from `TransformToVisual`, from the design area; Grid offsets include Padding and Row/ColumnSpacing. A
   Window's root is reported as `Microsoft.UI.Xaml.Window` without panel info, with its Title among its values; Pages
   are reported as UserControls. A render that arrives after its document closed is refused.

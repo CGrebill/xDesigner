@@ -74,7 +74,11 @@ public class RenderTests(WinUIHostFixture fixture)
         Assert.Equal("Hello from the strings", values["Text"].Value);
         var image = RenderXaml.All(result.Root!).Single(e => e.TypeName.EndsWith(".Image", StringComparison.Ordinal)).Bounds;
         var (b, g, r, _) = RenderXaml.Pixel(result, image.X + 20, image.Y + 20);
-        Assert.Equal((0, 0, 255), (b, g, r)); // badge.scale-200.png, the only file there is
+        if ((b, g, r) != (0, 0, 255)) // badge.scale-200.png, the only file there is
+        {
+            var source = (await fixture.Host.Host.GetValuesAsync("strings", 3, Ct)).FirstOrDefault(v => v.Key == "Source")?.Value;
+            Assert.Fail($"Expected the badge's blue at {image}, got rgb({r},{g},{b}). Source: {source}. Host output:\n{fixture.Host.RecentErrorOutput}");
+        }
     }
 
     /// <summary>A root keeps its own MaxWidth and Margin instead of being stretched to the design size (review M22).</summary>
