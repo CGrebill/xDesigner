@@ -2,7 +2,7 @@
 
 All notable changes to xDesigner are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.0.1] - 2026-11-25
 
 ### Fixed
 - **WinUI:** on a slow PC (or one without a graphics card), images could be drawn blank, because the design was captured
@@ -135,6 +135,6 @@ First public release.
 - Lossless XAML editing with exact undo.
 - Per-user installer and an uninstaller that removes all of xDesigner's files and settings.
 
-[Unreleased]: https://github.com/CGrebill/xDesigner/compare/v2.0.0...HEAD
+[2.0.1]: https://github.com/CGrebill/xDesigner/releases/tag/v2.0.1
 [2.0.0]: https://github.com/CGrebill/xDesigner/releases/tag/v2.0.0
 [1.0.0]: https://github.com/CGrebill/xDesigner/releases/tag/v1.0.0
