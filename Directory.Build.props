@@ -14,7 +14,7 @@
     <Company>CGrebill</Company>
     <Authors>CGrebill</Authors>
     <Copyright>Copyright 2026 CGrebill</Copyright>
-    <Version>1.0.0</Version>
+    <Version>2.0.0</Version>
     <!-- Where the source is published; also the "Report a problem" link in the app (Help menu). -->
     <RepositoryUrl>https://github.com/CGrebill/xDesigner</RepositoryUrl>
   </PropertyGroup>
