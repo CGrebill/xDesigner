@@ -28,7 +28,14 @@ public sealed record LayoutVocabulary
         VerticalStart = "Start",
         Stretch = "Fill",
         AbsoluteBounds = "AbsoluteLayout.LayoutBounds",
+        AbsoluteFlags = "AbsoluteLayout.LayoutFlags",
     };
+
+    /// <summary>
+    /// The attribute saying which parts of <see cref="AbsoluteBounds"/> are proportions of the layout's size rather than
+    /// DIPs (MAUI's <c>AbsoluteLayout.LayoutFlags</c>), or null.
+    /// </summary>
+    public string? AbsoluteFlags { get; init; }
 
     public string Width { get; init; } = "Width";
 
@@ -52,9 +59,6 @@ public sealed record LayoutVocabulary
     /// where <c>Canvas.Left</c>/<c>Canvas.Top</c> position it.
     /// </summary>
     public string? AbsoluteBounds { get; init; }
-
-    /// <summary>Whether this is the canonical vocabulary (nothing to translate).</summary>
-    public bool IsCanonical => this == Xaml;
 
     /// <summary>A canonical attribute's value on <paramref name="element"/>, translated back to canonical values.</summary>
     public string? Get(XElement element, XName canonical)
@@ -146,12 +150,143 @@ public sealed record LayoutVocabulary
 
         if (boundsChanged && AbsoluteBounds is { } bounds && result.FindIndex(r => r.Name == bounds) is var at and >= 0)
         {
-            result[at] = (bounds, parts[0] is null && parts[1] is null
-                ? null
-                : $"{parts[0] ?? "0"},{parts[1] ?? "0"},{parts[2] ?? "-1"},{parts[3] ?? "-1"}");
+            var proportional = ProportionalParts(element);
+            if (parts[0] is null && parts[1] is null)
+            {
+                // Leaving the AbsoluteLayout: the bounds go, but an explicit size they held stays (review M10).
+                result[at] = (bounds, null);
+                for (var i = 2; i <= 3; i++)
+                {
+                    var name = i == 2 ? Width : Height;
+                    if (ExplicitSize(current, i) is { } size && !proportional[i] && element.Attribute(name) is null && result.All(r => r.Name != name))
+                    {
+                        Put(name, size);
+                    }
+                }
+
+                if (AbsoluteFlags is { } flags)
+                {
+                    Put(flags, null);
+                }
+            }
+            else
+            {
+                result[at] = (bounds, $"{parts[0] ?? "0"},{parts[1] ?? "0"},{parts[2] ?? "-1"},{parts[3] ?? "-1"}");
+
+                // The designer writes DIPs: a part it wrote is no longer a proportion of the layout (review M9).
+                var written = new bool[4];
+                for (var i = 0; i < 4; i++)
+                {
+                    written[i] = parts[i] != BoundsPart(current, i);
+                }
+
+                if (AbsoluteFlags is { } flags && Enumerable.Range(0, 4).Any(i => proportional[i] && written[i]))
+                {
+                    Put(flags, FlagsText(Enumerable.Range(0, 4).Select(i => proportional[i] && !written[i]).ToArray()));
+                }
+            }
         }
 
         return result.Where(r => (string?)element.Attribute(r.Name) != r.Value).ToList();
+    }
+
+    /// <summary>
+    /// Whether <paramref name="element"/>'s position or size along <paramref name="canonical"/> (Canvas.Left/Top, Width,
+    /// Height) is a proportion of its AbsoluteLayout (<c>LayoutFlags</c>), not DIPs: such a value can't be offset in DIPs.
+    /// </summary>
+    public bool IsProportional(XElement element, XName canonical) => canonical.LocalName switch
+    {
+        CanvasLeft => ProportionalParts(element)[0],
+        CanvasTop => ProportionalParts(element)[1],
+        "Width" => ProportionalParts(element)[2],
+        "Height" => ProportionalParts(element)[3],
+        _ => false,
+    };
+
+    /// <summary>x, y, width, height: which are proportional, from <c>LayoutFlags</c> (<c>PositionProportional</c>, <c>XProportional,WidthProportional</c>…).</summary>
+    private bool[] ProportionalParts(XElement element)
+    {
+        var result = new bool[4];
+        if (AbsoluteFlags is null || (string?)element.Attribute(AbsoluteFlags) is not { } text)
+        {
+            return result;
+        }
+
+        foreach (var flag in text.Split([',', '|', ' '], StringSplitOptions.RemoveEmptyEntries))
+        {
+            switch (flag)
+            {
+                case "All":
+                    Array.Fill(result, true);
+                    break;
+                case "PositionProportional":
+                    result[0] = result[1] = true;
+                    break;
+                case "SizeProportional":
+                    result[2] = result[3] = true;
+                    break;
+                case "XProportional":
+                    result[0] = true;
+                    break;
+                case "YProportional":
+                    result[1] = true;
+                    break;
+                case "WidthProportional":
+                    result[2] = true;
+                    break;
+                case "HeightProportional":
+                    result[3] = true;
+                    break;
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>The <c>LayoutFlags</c> value for these proportional parts; null (remove the attribute) when none are.</summary>
+    private static string? FlagsText(bool[] proportional)
+    {
+        if (proportional.All(p => p))
+        {
+            return "All";
+        }
+
+        var names = new List<string>();
+        if (proportional[0] && proportional[1])
+        {
+            names.Add("PositionProportional");
+        }
+        else
+        {
+            if (proportional[0])
+            {
+                names.Add("XProportional");
+            }
+
+            if (proportional[1])
+            {
+                names.Add("YProportional");
+            }
+        }
+
+        if (proportional[2] && proportional[3])
+        {
+            names.Add("SizeProportional");
+        }
+        else
+        {
+            if (proportional[2])
+            {
+                names.Add("WidthProportional");
+            }
+
+            if (proportional[3])
+            {
+                names.Add("HeightProportional");
+            }
+        }
+
+        return names.Count == 0 ? null : string.Join(',', names);
     }
 
     /// <summary>Applies canonical attributes to a new element (no undo: it isn't in the document yet).</summary>

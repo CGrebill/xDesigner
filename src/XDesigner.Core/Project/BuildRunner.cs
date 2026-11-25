@@ -29,14 +29,15 @@ public sealed record BuildResult(bool Succeeded, int ExitCode, IReadOnlyList<Bui
 /// One <c>dotnet build</c>: a solution or project, the platform it needs (<c>x64</c> for WinUI) and the target framework to
 /// build (MAUI's Windows one), if any.
 /// </summary>
-public sealed record BuildStep(string Path, string? Platform, string? Framework = null);
+/// <param name="Solution">The solution a project is built for when it is built on its own (its <c>$(SolutionDir)</c> and friends).</param>
+public sealed record BuildStep(string Path, string? Platform, string? Framework = null, string? Solution = null);
 
 /// <summary><c>dotnet build</c> of the open project, with output streamed to the Build tab and diagnostics parsed (§11.2).</summary>
 public static partial class BuildRunner
 {
     /// <param name="platform">Passed as <c>-p:Platform</c> (WinUI projects have no AnyCPU build).</param>
     /// <param name="framework">Passed as <c>-f</c> (a MAUI project is built for Windows only).</param>
-    public static async Task<BuildResult> BuildAsync(string projectPath, Action<string>? onLine = null, string? platform = null, string? framework = null, CancellationToken cancellationToken = default)
+    public static async Task<BuildResult> BuildAsync(string projectPath, Action<string>? onLine = null, string? platform = null, string? framework = null, string? solution = null, CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
         List<string> args = ["build", projectPath, "-c", "Debug", "-nologo", "-v:minimal", "-tl:off", "-p:GenerateFullPaths=true"];
@@ -49,6 +50,17 @@ public static partial class BuildRunner
         {
             args.Add("-f");
             args.Add(framework);
+        }
+
+        if (solution is not null)
+        {
+            // Built on its own for its platform or framework, but as part of the solution: projects may use these (review L16).
+            var full = Path.GetFullPath(solution);
+            args.Add($"-p:SolutionDir={Path.GetDirectoryName(full)}{Path.DirectorySeparatorChar}");
+            args.Add($"-p:SolutionPath={full}");
+            args.Add($"-p:SolutionName={Path.GetFileNameWithoutExtension(full)}");
+            args.Add($"-p:SolutionFileName={Path.GetFileName(full)}");
+            args.Add($"-p:SolutionExt={Path.GetExtension(full)}");
         }
 
         var result = await ProcessRunner.RunAsync(

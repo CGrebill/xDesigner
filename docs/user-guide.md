@@ -1,8 +1,8 @@
 # xDesigner user guide
 
-xDesigner designs the windows and user controls of [Avalonia UI](https://avaloniaui.net/) 12 desktop apps the way the
-WinForms designer does: you place controls with the mouse, set their properties in a properties window and write the
-event handlers in C#. It writes the `.axaml` files for you.
+xDesigner designs the windows, pages and user controls of [Avalonia UI](https://avaloniaui.net/) 11 and 12, WinUI 3 and
+.NET MAUI 10 and 11 apps the way the WinForms designer does: you place controls with the mouse, set their properties in
+a properties window and write the event handlers in C#. It writes the XAML files (`.axaml`, `.xaml`) for you.
 
 - [The window](#the-window)
 - [Projects and files](#projects-and-files)
@@ -24,35 +24,35 @@ event handlers in C#. It writes the `.axaml` files for you.
 | Title bar | The menus (File, Edit, View, Project, Help) and a toolbar: Open, Run/Stop, and the preview's Theme, Size and Zoom |
 | Toolbox (left) | Controls to drag onto the form. Search at the top; your project's own controls are under **Project** |
 | Design surface (middle) | One tab per open file |
-| Outline (right, top) | Every control of the file as a tree |
+| Solution / Outline (right, top) | **Solution**: the open solution's projects and files (Solution Explorer); **Outline**: every control of the file as a tree |
 | Properties / Events (right, bottom) | The selected control's properties and events |
 | Output (bottom) | Messages from xDesigner (**Output**), the build (**Build**), your running app (**Run**), every handler created (**Events**) and the last build's errors and warnings (**Error List**) |
 | Status bar | Renderer state, file path, the selection's position and size, zoom, grid snapping |
 
-Panes can be resized by dragging the bars between them; xDesigner remembers their sizes. **View › Toolbox** and
-**View › Output** hide or show those panes; **View › Solution Explorer** (Ctrl+Alt+L) and **View › Error List** bring
+Panes can be resized by dragging the bars between them; xDesigner remembers their sizes. **View ▸ Toolbox** and
+**View ▸ Output** hide or show those panes; **View ▸ Solution Explorer** (Ctrl+Alt+L) and **View ▸ Error List** bring
 those forward. Messages that need your
 attention (confirmations, warnings, errors) slide in under the title bar.
 
 ## Projects and files
 
-- **File › New project…** (Ctrl+Shift+N) creates a desktop app: choose Avalonia 12, Avalonia 11, WinUI 3 or .NET MAUI
+- **File ▸ New project…** (Ctrl+Shift+N) creates a desktop app: choose Avalonia 12, Avalonia 11, WinUI 3 or .NET MAUI
   11 or 10 (and for WinUI and MAUI whether it is **Packaged (MSIX)**), a name, a folder (by default
-  `Documents\Avalonia Projects`) and the window title. A MAUI app is created for Windows; add Android, iOS or macOS to its
+  `Documents\xDesigner Projects`) and the window title (a MAUI app's main page title). A MAUI app is created for Windows; add Android, iOS or macOS to its
   project file later. xDesigner builds it and opens its main window. The project is a normal .NET project; open it in Visual Studio,
   VS Code or Rider whenever you like.
-- **Project › Open project…** (Ctrl+Shift+O) opens a `.csproj`, `.sln` or `.slnx`. All of a solution's projects open
+- **Project ▸ Open project…** (Ctrl+Shift+O) opens a `.csproj`, `.sln` or `.slnx`. All of a solution's projects open
   together, in **Solution Explorer** (the **Solution** tab above the outline): each project shows the framework it
   uses, and the startup project (the one Run starts, in bold) can be changed with a right-click. Projects can use
   Avalonia 11 (11.1 or later), Avalonia 12, WinUI 3 or .NET MAUI 10 or 11, mixed in one solution: each file is drawn by
   its own project's framework. Double-click a XAML file to design it, or any other file to open it in your code editor. The startup
-  project's XAML files are also listed under **Project › Files**.
-- **File › Open…** (Ctrl+O) opens a single `.axaml` file, or a project. A file opened on its own still finds its
+  project's XAML files are also listed under **Project ▸ Files**.
+- **File ▸ Open…** (Ctrl+O) opens a single XAML file (`.axaml`, `.xaml`), or a project or solution. A file opened on its own still finds its
   project, so its custom controls render.
-- **Project › Add window…** and **Add user control…** (and **Add page…** in a WinUI project) create a new `.axaml`
+- **Project ▸ Add window…** and **Add user control…** (and **Add page…** in a WinUI project) create a new `.axaml`
   file (`.xaml` in WinUI) with its code-behind and open it. In a MAUI project they are **Add content page…** and **Add
   content view…** (MAUI windows are made in code).
-- **File › Open recent** lists recent files and projects.
+- **File ▸ Open recent** lists recent files and projects.
 - **Save** (Ctrl+S), **Save all** (Ctrl+Shift+S), **Close** (Ctrl+W). A tab with unsaved changes shows a dot, and
   xDesigner asks before closing it.
 
@@ -86,8 +86,10 @@ Grid snapping is switched on from the status bar.
 
 **Editing.** Cut, copy, paste and delete work as usual, also between files. Pasted controls are renamed if their names
 are taken. Undo (Ctrl+Z) and redo (Ctrl+Y) cover every change. Right-click a control for more: select its parent,
-bring it to the front or send it to the back, **Wrap in** a new Grid, StackPanel, Border, Canvas, DockPanel,
-WrapPanel or ScrollViewer, or open its item or row/column editor.
+bring it to the front or send it to the back, **Wrap in** a new panel of the file's framework (Grid, StackPanel, Border,
+Canvas, DockPanel, WrapPanel or ScrollViewer; in MAUI Grid, Border, VerticalStackLayout, HorizontalStackLayout,
+AbsoluteLayout, FlexLayout or ScrollView), or open its item or row/column editor. Controls can't be pasted between
+files of different frameworks.
 
 ## Properties
 
@@ -113,7 +115,7 @@ TextBox, and so on). xDesigner:
 1. gives the control a name, if it doesn't have one,
 2. adds an empty method such as `button1_Click` to the code-behind file (`MainWindow.axaml.cs`),
 3. connects it in the XAML, and
-4. tells you the method, file and line, with **Open in editor** and **Copy name** buttons.
+4. tells you the method, file and line, with **Open in editor** and **Copy method name** buttons.
 
 The **Events** tab lists every event of the selected control. Type a method name and press Enter to connect it (the
 method is created if it doesn't exist), pick an existing method from the list, or press the button to create or jump
@@ -141,7 +143,7 @@ drop it on the top or bottom of another row to put it before or after, or on the
 right-click menu is the same as on the form.
 
 The **eye** icon hides a control on the form while you design, to get at what's under it. It doesn't change the file;
-**View › Show hidden controls** brings them all back.
+**View ▸ Show hidden controls** brings them all back.
 
 ## Images
 
@@ -158,9 +160,9 @@ file opened on its own, xDesigner explains that.
 The toolbar in the title bar sets how the open form is previewed:
 
 - **Theme**: Default (the app's own), Light or Dark.
-- **Size**: the form's design size, a few common window sizes, or **Custom…**. This only changes the preview; **View ›
-  Keep this preview size** writes it into the file (as the Window's Width and Height, or as the design size of a user
-  control).
+- **Size**: the form's design size, a few common window sizes, or **Custom…**. This only changes the preview; **View ▸
+  Keep this preview size** writes it into the file (as an Avalonia Window's Width and Height, otherwise as the design size,
+  `d:DesignWidth` and `d:DesignHeight`).
 - **Zoom**: 25 % to 400 %, or Fit. Ctrl+mouse wheel, Ctrl+= and Ctrl+- zoom; Ctrl+0 is 100 %; Ctrl+9 fits the form in
   the window.
 
@@ -168,19 +170,24 @@ None of these change the file, except Keep this preview size.
 
 ## Building and running
 
-xDesigner builds the project when you open it, after **Project › Rebuild** (Ctrl+Shift+B) and before running. Custom
+xDesigner builds the project when you open it, after **Project ▸ Rebuild** (Ctrl+Shift+B) and before running. Custom
 controls and images appear on the form after a successful build. Builds made outside xDesigner, for example in Visual
-Studio, are picked up too.
+Studio, are picked up too, for every project of the solution (a rebuilt library reloads the projects that use it). A
+build can be cancelled with **Project ▸ Cancel build**, and when one project of a solution fails, the others still get
+their new build.
 
-**Run** (F5) saves your changes, builds and starts the app; its console output goes to Output › Run. **Stop**
-(Shift+F5) closes it. Build errors are listed in Output › Error List (double-click one to open its file at the line)
-and, in full, in Output › Build. With a solution open, Rebuild builds the whole solution and Run starts the startup
+**Run** (F5) saves your changes, builds and starts the app; its console output goes to Output ▸ Run. **Stop**
+(Shift+F5) closes it. Build errors are listed in Output ▸ Error List (double-click one to open its file at the line; a XAML file opens in the designer with the control
+at that line selected)
+and, in full, in Output ▸ Build. With a solution open, Rebuild builds the whole solution and Run starts the startup
 project.
 
-A packaged WinUI app is run the way Visual Studio runs it: xDesigner registers the build with Windows and starts it as an
-installed app (its console output isn't shown). Windows only allows that with **Developer Mode** on (Settings › System ›
-For developers); without it, xDesigner starts the app's exe directly and says so in Output › Run. The app then works,
-except for features that need a package identity, such as notifications.
+A packaged WinUI or MAUI app is run the way Visual Studio runs it: xDesigner registers the build with Windows and starts
+it as an installed app (its console output isn't shown). Windows only allows that with **Developer Mode** on (Settings ▸
+System ▸ For developers). Without it, an app that carries the Windows App SDK itself (`WindowsAppSDKSelfContained`) is
+started from its exe, and xDesigner says so in Output ▸ Run; it then works, except for features that need a package
+identity, such as notifications. One that uses the Windows App SDK installed on Windows can only run as a package, so
+xDesigner asks you to turn on Developer Mode.
 
 Building and running needs the [.NET SDK](https://dotnet.microsoft.com/download) the project uses (its `global.json` can
 ask for a version), and for a .NET MAUI project the MAUI workload for Windows (`dotnet workload install maui-windows`, in
@@ -189,7 +196,7 @@ aren't needed. Opening and designing files works without any of them.
 
 ## Settings
 
-**File › Settings…** (Ctrl+,):
+**File ▸ Settings…** (Ctrl+,):
 
 - **Code editor**: where Open in editor opens code. Automatic uses VS Code if it's installed, otherwise the program
   Windows opens `.cs` files with. You can also choose Visual Studio, or a custom command where `{file}` and `{line}`
@@ -198,7 +205,7 @@ aren't needed. Opening and designing files works without any of them.
 - **Snapping**: snapping to other controls, snapping to a grid, and the grid size.
 - **Properties window**: show advanced properties and events by default.
 
-Settings are stored in `%LOCALAPPDATA%\xDesigner\settings.json`; **Help › Open the settings and error log folder**
+Settings are stored in `%LOCALAPPDATA%\xDesigner\settings.json`; **Help ▸ Open the settings and error log folder**
 opens it.
 
 ## When something goes wrong
@@ -208,7 +215,7 @@ opens it.
   Press **Undo** to take back the last change, or fix the control in your code and rebuild.
 - **"The renderer was stopped".** Drawing the form took more than 10 seconds, usually because a custom control is
   stuck in a loop. Fix the control, rebuild, and press **Retry**.
-- **Custom controls don't appear.** Build the project (Project › Rebuild) and check Output › Build for errors.
+- **Custom controls don't appear.** Build the project (Project ▸ Rebuild) and check Output ▸ Build for errors.
 - **Something unexpected happened.** xDesigner reports it in Output and keeps running, so you can save your work. The
-  details are in `errors.log` in the settings folder (Help › Open the settings and error log folder). Please
-  [report it](https://github.com/CGrebill/xDesigner/issues) (Help › Report a problem), with that file if you can.
+  details are in `errors.log` in the settings folder (Help ▸ Open the settings and error log folder). Please
+  [report it](https://github.com/CGrebill/xDesigner/issues) (Help ▸ Report a problem), with that file if you can.

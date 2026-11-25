@@ -40,7 +40,33 @@ internal sealed class UserAssemblyLoader
         AssemblyLoadContext.Default.Resolving += loader.OnResolving;
         AssemblyLoadContext.Default.ResolvingUnmanagedDll += loader.OnResolvingUnmanagedDll;
         loader.MainAssembly = loader.Load(AssemblyLoadContext.Default, fullPath);
+        loader.LoadLibraries();
         return loader;
+    }
+
+    /// <summary>
+    /// The project's own libraries (referenced assemblies in its output folder), loaded now: a library nothing has used yet
+    /// is otherwise loaded only when the XAML loader meets it, after the sanitizer looked for its types, so its controls'
+    /// events stayed in the copy and it was missing from the toolbox (review L11).
+    /// </summary>
+    private void LoadLibraries()
+    {
+        foreach (var reference in MainAssembly.GetReferencedAssemblies())
+        {
+            if (!File.Exists(Path.Combine(_directory, reference.Name + ".dll")))
+            {
+                continue; // the framework's, or a package resolved from the NuGet cache when it's needed
+            }
+
+            try
+            {
+                AssemblyLoadContext.Default.LoadFromAssemblyName(reference);
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or BadImageFormatException)
+            {
+                Console.Error.WriteLine($"Couldn't load {reference.Name}: {ex.Message}");
+            }
+        }
     }
 
     /// <summary>
@@ -98,6 +124,14 @@ internal sealed class UserAssemblyLoader
 
     private Assembly? OnResolving(AssemblyLoadContext context, AssemblyName name)
     {
+        // A version the host already has another of (a project on Avalonia 12.2, the host on 12.1): loading the project's
+        // copy beside it fails ("already loaded"), so the loaded one is used; the designer warns about the versions (review M19).
+        if (context.Assemblies.FirstOrDefault(a => string.Equals(a.GetName().Name, name.Name, StringComparison.OrdinalIgnoreCase)) is { } loaded)
+        {
+            Console.Error.WriteLine($"Using the renderer's {name.Name} {loaded.GetName().Version} for the project's {name.Version}.");
+            return loaded;
+        }
+
         var path = _resolver.ResolveAssemblyToPath(name);
         if (path is null)
         {
@@ -112,6 +146,73 @@ internal sealed class UserAssemblyLoader
     private IntPtr OnResolvingUnmanagedDll(Assembly assembly, string name)
     {
         var path = _resolver.ResolveUnmanagedDllToPath(name);
-        return path is null ? IntPtr.Zero : System.Runtime.InteropServices.NativeLibrary.Load(path);
+        return path is null ? IntPtr.Zero : System.Runtime.InteropServices.NativeLibrary.Load(NativeCopy(path));
+    }
+
+    /// <summary>
+    /// A copy of a native library in this process's own temporary folder: a loaded native library can't be overwritten, so
+    /// loading it from the build output would make the next build fail with "file in use" (§11.2, review L14).
+    /// </summary>
+    private static string NativeCopy(string path)
+    {
+        try
+        {
+            var root = Path.Combine(Path.GetTempPath(), "xDesigner-native");
+            var folder = Path.Combine(root, Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (!Directory.Exists(folder))
+            {
+                RemoveExitedProcessesCopies(root);
+            }
+
+            Directory.CreateDirectory(folder);
+            var copy = Path.Combine(folder, Path.GetFileName(path));
+            if (!File.Exists(copy))
+            {
+                File.Copy(path, copy);
+            }
+
+            return copy;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return path; // loaded in place, as before
+        }
+    }
+
+    /// <summary>The copies of renderers that have exited (a loaded library can't be deleted by its own process).</summary>
+    private static void RemoveExitedProcessesCopies(string root)
+    {
+        if (!Directory.Exists(root))
+        {
+            return;
+        }
+
+        foreach (var folder in Directory.EnumerateDirectories(root))
+        {
+            if (int.TryParse(Path.GetFileName(folder), out var pid) && !IsRunning(pid))
+            {
+                try
+                {
+                    Directory.Delete(folder, recursive: true);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Still in use (a renderer with that id again): next time.
+                }
+            }
+        }
+
+        static bool IsRunning(int pid)
+        {
+            try
+            {
+                using var process = System.Diagnostics.Process.GetProcessById(pid);
+                return !process.HasExited;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+        }
     }
 }

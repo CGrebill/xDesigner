@@ -61,6 +61,24 @@ public class XamlRendererTests(RenderHostFixture host, ITestOutputHelper output)
         Assert.Equal(new PanelInfo(PanelKind.StackPanel, LayoutOrientation.Vertical), stack.Panel);
     }
 
+    /// <summary>A row starts after the spacing that follows the one before it (review M20).</summary>
+    [Fact]
+    public async Task Grid_RowOffsets_IncludeRowSpacing()
+    {
+        const string xaml = $"""
+            <UserControl {RenderXaml.Namespaces} Width="200" Height="190" dsn:DesignId.Value="1">
+              <Grid RowDefinitions="50,50,50" RowSpacing="20" ColumnDefinitions="*,*" ColumnSpacing="10" dsn:DesignId.Value="2" />
+            </UserControl>
+            """;
+
+        var result = await host.RenderAsync(xaml);
+
+        Assert.True(result.Success, result.Error?.Message);
+        var grid = Flatten(result.Root!).Single(e => e.Panel?.Kind == PanelKind.Grid);
+        Assert.Equal([0, 70, 140, 190], grid.Panel!.RowOffsets!.Select(o => Math.Round(o)));
+        Assert.Equal([0, 105, 200], grid.Panel.ColumnOffsets!.Select(o => Math.Round(o)));
+    }
+
     [Fact]
     public async Task CustomDrawnControl_FromUserAssembly_Paints()
     {

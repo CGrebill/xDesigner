@@ -63,4 +63,33 @@ public class RenderCopyBuilderTests
 
         Assert.Equal(Xaml.Split('\n').Length, copy.Split('\n').Length);
     }
+
+    /// <summary>Tags whose attributes span lines keep them there, so later elements stay on their lines (review M21).</summary>
+    [Fact]
+    public void MultiLineStartTags_KeepEveryLaterElementOnItsLine()
+    {
+        var source = """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+              <StackPanel>
+                <Button x:Name="a"
+                        Content="A"
+                        Width="80" />
+                <Bad />
+              </StackPanel>
+            </UserControl>
+            """.ReplaceLineEndings("\n");
+
+        var copy = XamlDocument.Parse(source).BuildRenderCopy();
+
+        var lines = copy.Split('\n');
+        Assert.Contains("Content=\"A\"", lines[4], StringComparison.Ordinal);
+        Assert.Contains("<Bad", lines[6], StringComparison.Ordinal);
+        Assert.Equal(source.Split('\n').Length, lines.Length);
+
+        // And through a second parse with line info, as the render hosts do.
+        var reparsed = XDocument.Parse(copy, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
+        var again = XDesigner.Protocol.Rendering.LineKeepingXml.Write(reparsed.Root!).Split('\n');
+        Assert.Contains("<Bad", again[6], StringComparison.Ordinal);
+    }
 }

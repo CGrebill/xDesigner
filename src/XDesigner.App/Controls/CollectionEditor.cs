@@ -31,7 +31,7 @@ public static class CollectionEditor
         var drafts = items.Select(Clone).ToList();
         var list = new ListView { SelectionMode = ListViewSelectionMode.Single, Height = 300, Width = 260, BorderThickness = new Thickness(1) };
         list.BorderBrush = (Brush)Application.Current.Resources["ControlStrokeColorDefaultBrush"];
-        var text = new TextBox { Header = kind.TextProperty == "Header" ? "Header" : "Text", Width = 260 };
+        var text = new TextBox { Header = kind.TextProperty, Width = 260 }; // the property it sets: Header, Content or Text
         var note = new TextBlock { TextWrapping = TextWrapping.Wrap, Width = 260, Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
         var add = new Button { Content = $"Add {kind.Noun}" };
         var addChild = new Button { Content = "Add sub-item", Visibility = kind.Nested ? Visibility.Visible : Visibility.Collapsed };

@@ -18,7 +18,7 @@ public sealed partial class DesignSurface
         }
     }
 
-    /// <summary>The faux title bar stands for the window itself (its default event is Opened).</summary>
+    /// <summary>The faux title bar stands for the window itself (double-clicking it creates the window's default event handler).</summary>
     private void TitleBar_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         if (Document is { } doc)

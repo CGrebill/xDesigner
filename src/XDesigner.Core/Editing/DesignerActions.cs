@@ -17,7 +17,8 @@ public sealed partial class DesignerActions(XamlDocument document, UndoManager u
     private readonly UndoManager _undo = undo;
 
     /// <summary>The document's XAML language namespace (<c>x:</c>; 2009 for MAUI).</summary>
-    private XNamespace XamlNs => _document.Profile.XamlNamespace;
+    /// <summary>The <c>x:</c> namespace this file uses (2006 or 2009, §5.3).</summary>
+    private XNamespace XamlNs => _document.XamlNamespace;
 
     /// <summary>
     /// Adds a new control as planned by <see cref="DropPlanner"/>: generated <c>x:Name</c>, placement attributes,
@@ -31,7 +32,7 @@ public sealed partial class DesignerActions(XamlDocument document, UndoManager u
 
         if (root.PrefixOf(XamlNs) is null)
         {
-            commands.Add(new SetAttributeCommand(_document.Root.Id, XNamespace.Xmlns + "x", XamlNs.NamespaceName));
+            commands.Add(new SetAttributeCommand(_document.Root.Id, XNamespace.Xmlns + _document.Xml.Root!.FreePrefix("x"), XamlNs.NamespaceName));
         }
 
         var elementNamespace = ElementNamespace(root, type.XmlNamespace, type.ClrNamespace, out var declaration);
@@ -109,21 +110,21 @@ public sealed partial class DesignerActions(XamlDocument document, UndoManager u
 
         foreach (var attribute in root.Attributes().Where(a => a.IsNamespaceDeclaration))
         {
-            if (attribute.Value == xmlNamespace || ControlCatalog.ClrNamespaceOf(attribute.Value) == clrNamespace)
+            // The same CLR namespace in the same assembly: MAUI's clr-namespace names one (review L3).
+            if (attribute.Value == xmlNamespace
+                || (ControlCatalog.ClrNamespaceOf(attribute.Value) == clrNamespace
+                    && (AssemblyOf(xmlNamespace) is not { } wanted || AssemblyOf(attribute.Value) == wanted)))
             {
                 return attribute.Value;
             }
         }
 
-        var used = root.Attributes().Where(a => a.IsNamespaceDeclaration).Select(a => a.Name.LocalName).ToHashSet();
-        var stem = used.Contains("local") ? clrNamespace.Split('.')[^1].ToLowerInvariant() : "local";
-        var prefix = stem;
-        for (var n = 2; used.Contains(prefix); n++)
-        {
-            prefix = stem + n;
-        }
-
-        declaration = (prefix, xmlNamespace);
+        var stem = root.FreePrefix("local") == "local" ? "local" : clrNamespace.Split('.')[^1].ToLowerInvariant();
+        declaration = (root.FreePrefix(stem), xmlNamespace);
         return xmlNamespace;
     }
+
+    /// <summary>The <c>assembly=</c> part of a <c>clr-namespace:</c> XML namespace; null for <c>using:</c> and URLs.</summary>
+    private static string? AssemblyOf(string xmlNamespace) =>
+        xmlNamespace.Split(';').Skip(1).FirstOrDefault(p => p.StartsWith("assembly=", StringComparison.Ordinal))?["assembly=".Length..];
 }

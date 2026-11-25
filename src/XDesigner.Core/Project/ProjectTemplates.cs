@@ -9,7 +9,7 @@ public enum ItemKind
     Window,
     UserControl,
 
-    /// <summary>WinUI only (Avalonia has no pages).</summary>
+    /// <summary>A WinUI Page, or a MAUI ContentPage (Avalonia has no pages).</summary>
     Page,
 }
 
@@ -19,17 +19,15 @@ public enum ItemKind
 /// </summary>
 public static class ProjectTemplates
 {
-    /// <summary>The Avalonia version new Avalonia 12 projects reference (the one the designer's Avalonia 12 renderer uses).</summary>
-    public static string AvaloniaVersion => Frameworks.FrameworkProfile.Avalonia12.TemplateVersion!;
-
-    /// <summary>The framework versions the designer can create new projects for, newest first.</summary>
+    /// <summary>The framework versions the designer can create new projects for: by framework (Avalonia, WinUI, MAUI), newest first.</summary>
     public static IReadOnlyList<Frameworks.FrameworkProfile> CreatableFrameworks { get; } =
-        Frameworks.FrameworkProfile.All.Where(p => p.IsSupported && p.ProjectTemplate is not null).OrderByDescending(p => p.MajorVersion).ToList();
+        Frameworks.FrameworkProfile.All.Where(p => p.ProjectTemplate is not null).OrderBy(p => p.Family).ThenByDescending(p => p.MajorVersion).ToList();
 
     private const string Prefix = "XDesigner.Core.Templates/";
 
     /// <summary>Why a project name can't be used, or null. Letters, digits, <c>.</c>, <c>_</c> and <c>-</c>; starts with a letter or <c>_</c>.</summary>
-    public static string? ValidateProjectName(string name)
+    /// <param name="framework">The framework it's created for: each one's template uses other names (all of them when omitted).</param>
+    public static string? ValidateProjectName(string name, Frameworks.FrameworkProfile? framework = null)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -38,7 +36,7 @@ public static class ProjectTemplates
 
         if (!(char.IsLetter(name[0]) || name[0] == '_'))
         {
-            return "The name must start with a letter.";
+            return "The name must start with a letter or an underscore.";
         }
 
         if (name.Any(c => !(char.IsLetterOrDigit(c) || c is '.' or '_' or '-')) || name.EndsWith('.') || name.Contains("..", StringComparison.Ordinal))
@@ -49,12 +47,12 @@ public static class ProjectTemplates
         // The project's id must not be a package it references (NuGet reports a cycle), and no part of its namespace may
         // be a type the template uses unqualified (the namespace would hide the type, CS0118).
         var first = name.Split('.')[0];
-        if (ReservedProjectPrefixes.Any(p => first.Equals(p, StringComparison.OrdinalIgnoreCase)))
+        if (ReservedPrefixesFor(framework).Any(p => first.Equals(p, StringComparison.OrdinalIgnoreCase)))
         {
             return $"A project can't be called {first}: that's the name of a package it uses. Try {first}App.";
         }
 
-        if (NamespaceFor(name).Split('.').FirstOrDefault(TemplateTypeNames.Contains) is { } clash)
+        if (NamespaceFor(name).Split('.').FirstOrDefault(TemplateTypeNamesFor(framework).Contains) is { } clash)
         {
             return $"A project can't be called {clash}: that's a type name the new project uses. Try {clash}App or My{clash}.";
         }
@@ -62,21 +60,31 @@ public static class ProjectTemplates
         return null;
     }
 
-    /// <summary>The packages new projects reference are all <c>Avalonia</c> or <c>Avalonia.*</c>.</summary>
-    private static readonly string[] ReservedProjectPrefixes = ["Avalonia"];
+    /// <summary>The packages a framework's new projects reference start with these (<c>Avalonia.*</c>, <c>Microsoft.*</c>).</summary>
+    private static string[] ReservedPrefixesFor(Frameworks.FrameworkProfile? framework) => framework?.Family switch
+    {
+        Frameworks.FrameworkFamily.Avalonia => ["Avalonia"],
+        Frameworks.FrameworkFamily.WinUI or Frameworks.FrameworkFamily.Maui => ["Microsoft"],
+        _ => ["Avalonia", "Microsoft"],
+    };
 
     /// <summary>
     /// Types the templates use without a namespace and don't define themselves: a namespace segment with one of these
     /// names hides the type. (App, MainWindow and Program are defined in the project's namespace, so they still resolve.)
     /// </summary>
-    private static readonly HashSet<string> TemplateTypeNames = new(StringComparer.Ordinal)
+    private static HashSet<string> TemplateTypeNamesFor(Frameworks.FrameworkProfile? framework) => framework?.Family switch
     {
-        "Application", "Window", "UserControl", "AppBuilder", "AvaloniaXamlLoader", "IClassicDesktopStyleApplicationLifetime", "STAThread",
-        // WinUI
-        "Page", "WinRT", "LaunchActivatedEventArgs", "DispatcherQueue", "DispatcherQueueSynchronizationContext", "SynchronizationContext",
-        // MAUI
-        "MauiApp", "ContentPage", "ContentView", "IActivationState", "AppInfo", "MauiWinUIApplication", "Microsoft",
+        Frameworks.FrameworkFamily.Avalonia => [.. CommonTypeNames, .. AvaloniaTypeNames],
+        Frameworks.FrameworkFamily.WinUI => [.. CommonTypeNames, .. WinUITypeNames],
+        Frameworks.FrameworkFamily.Maui => [.. CommonTypeNames, .. MauiTypeNames],
+        _ => [.. CommonTypeNames, .. AvaloniaTypeNames, .. WinUITypeNames, .. MauiTypeNames],
     };
+
+    private static readonly string[] CommonTypeNames = ["Application", "Window", "STAThread"];
+    private static readonly string[] AvaloniaTypeNames = ["UserControl", "AppBuilder", "AvaloniaXamlLoader", "IClassicDesktopStyleApplicationLifetime"];
+    private static readonly string[] WinUITypeNames =
+        ["Page", "UserControl", "WinRT", "LaunchActivatedEventArgs", "DispatcherQueue", "DispatcherQueueSynchronizationContext", "SynchronizationContext"];
+    private static readonly string[] MauiTypeNames = ["MauiApp", "ContentPage", "ContentView", "IActivationState", "AppInfo", "MauiWinUIApplication", "Microsoft"];
 
     /// <summary>
     /// The item kinds Project ▸ Add offers for a framework. In MAUI, a page is a ContentPage and a user control a ContentView,
@@ -115,7 +123,7 @@ public static class ProjectTemplates
             throw new ProjectException($"The designer can't create {framework.DisplayName} projects yet.");
         }
 
-        if (ValidateProjectName(name) is { } problem)
+        if (ValidateProjectName(name, framework) is { } problem)
         {
             throw new ProjectException(problem);
         }
@@ -268,6 +276,13 @@ public static class ProjectTemplates
         if (className is "Window" or "UserControl" or "Page" or "ContentPage" or "ContentView")
         {
             return $"A class can't be called {className}: it would derive from itself. Try My{className}.";
+        }
+
+        // Names the project's own startup code uses unqualified (review L8): Program, App, MauiProgram, Application…
+        if (className is "Program" or "App" or "MauiProgram" or "Application" or "AppBuilder" or "MauiApp"
+            || TemplateTypeNamesFor(profile).Contains(className))
+        {
+            return $"A class can't be called {className}: the project's startup code already uses that name. Try another, such as {className}View.";
         }
 
         return File.Exists(Path.Combine(folder, className + extension)) || File.Exists(Path.Combine(folder, className + extension + ".cs"))

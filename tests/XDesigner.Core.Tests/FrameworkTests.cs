@@ -58,7 +58,7 @@ public sealed class FrameworkTests : IDisposable
         Write(@"bin\App.deps.json", """{ "libraries": { "Avalonia/0.10.21": {} } }""");
         var old = FrameworkDetector.FromBuildOutput(target);
         Assert.Equal((FrameworkFamily.Avalonia, (FrameworkProfile?)null), (old.Family, old.Profile));
-        Assert.Contains("supports Avalonia 11 and 12, WinUI 3 and .NET MAUI 10 and 11.", old.Problem("App"));
+        Assert.Contains("supports Avalonia 11.1+ and 12, WinUI 3 and .NET MAUI 10 and 11.", old.Problem("App"));
     }
 
     [Theory]
@@ -78,11 +78,47 @@ public sealed class FrameworkTests : IDisposable
         Assert.Equal(FrameworkId.Avalonia11, FrameworkDetector.FromProjectFile(csproj).Profile?.Id);
     }
 
+    /// <summary>MSBuild's evaluation decides before a build: versions from Directory.Build.props or CPM, UseWinUI from props (review M6, M8, L55).</summary>
+    [Fact]
+    public void Evaluation_DecidesTheFramework()
+    {
+        ProjectInfo Info(bool winui = false, bool maui = false, string tfm = "net10.0", params (string Id, string Version)[] packages) =>
+            new(Path.Combine(_dir, "none.csproj"), "App", "App", "App", Path.Combine(_dir, "bin", "App.dll"), tfm, "WinExe")
+            {
+                UseWinUI = winui,
+                UseMaui = maui,
+                PackageVersions = packages.ToDictionary(p => p.Id, p => p.Version),
+            };
+
+        Assert.Equal(FrameworkId.Avalonia12, FrameworkDetector.Detect(Info(packages: ("Avalonia", "12.0.1"))).Profile?.Id);
+        Assert.Equal(FrameworkId.Avalonia11, FrameworkDetector.Detect(Info(packages: ("Avalonia", "11.2.3"))).Profile?.Id);
+        Assert.Null(FrameworkDetector.Detect(Info(packages: ("Avalonia", "11.0.10"))).Profile); // older than 11.1
+        Assert.Equal(FrameworkId.WinUI3, FrameworkDetector.Detect(Info(winui: true)).Profile?.Id);
+        Assert.Equal(FrameworkId.Maui10, FrameworkDetector.Detect(Info(maui: true, tfm: "net10.0-windows10.0.19041.0")).Profile?.Id);
+        Assert.Equal(FrameworkId.Maui11, FrameworkDetector.Detect(Info(maui: true, packages: ("Microsoft.Maui.Controls", "11.0.0"))).Profile?.Id);
+        Assert.Null(FrameworkDetector.Detect(Info(packages: ("Microsoft.WindowsAppSDK", "2.0.0"))).Family); // WPF using the App SDK
+    }
+
+    [Fact]
+    public void Evaluation_ParsesCentralPackageVersions()
+    {
+        const string output = """
+            {"Properties": {"TargetPath": "x.dll"}, "Items": {
+              "PackageReference": [{"Identity": "Avalonia"}, {"Identity": "Other", "Version": "1.0"}, {"Identity": "Pinned", "VersionOverride": "3.0"}],
+              "PackageVersion": [{"Identity": "Avalonia", "Version": "11.3.0"}, {"Identity": "Pinned", "Version": "2.0"}]}}
+            """;
+
+        var evaluation = ProjectReader.ParseEvaluation(output);
+
+        Assert.Equal("x.dll", evaluation.Properties["TargetPath"]);
+        Assert.Equal(new Dictionary<string, string> { ["Avalonia"] = "11.3.0", ["Other"] = "1.0", ["Pinned"] = "3.0" }, evaluation.Packages);
+    }
+
     [Fact]
     public void UnsupportedFrameworks_AreExplained()
     {
         var maui9 = new DetectedFramework(FrameworkFamily.Maui, new Version(9, 0), null);
-        Assert.Equal("Shop uses .NET MAUI 9.0. The designer supports Avalonia 11 and 12, WinUI 3 and .NET MAUI 10 and 11.", maui9.Problem("Shop"));
+        Assert.Equal("Shop uses .NET MAUI 9.0. The designer supports Avalonia 11.1+ and 12, WinUI 3 and .NET MAUI 10 and 11.", maui9.Problem("Shop"));
         Assert.Null(new DetectedFramework(FrameworkFamily.Maui, new Version(11, 0), FrameworkProfile.Maui11).Problem("Shop"));
         Assert.Null(new DetectedFramework(FrameworkFamily.WinUI, null, FrameworkProfile.WinUI3).Problem("Shop"));
         Assert.Null(new DetectedFramework(FrameworkFamily.Avalonia, new Version(12, 1), FrameworkProfile.Avalonia12).Problem("Shop"));
@@ -122,7 +158,7 @@ public sealed class FrameworkTests : IDisposable
     public void Profiles_KnowTheirNamespacesAndHosts()
     {
         Assert.All(FrameworkProfile.All, p => Assert.Equal(p, FrameworkProfile.For(p.Id)));
-        Assert.Equal([FrameworkId.Avalonia12, FrameworkId.Avalonia11, FrameworkId.WinUI3, FrameworkId.Maui10, FrameworkId.Maui11], FrameworkProfile.All.Where(p => p.IsSupported).Select(p => p.Id));
+        Assert.Equal([FrameworkId.Avalonia12, FrameworkId.Avalonia11, FrameworkId.WinUI3, FrameworkId.Maui10, FrameworkId.Maui11], FrameworkProfile.All.Select(p => p.Id));
         Assert.Equal(FrameworkProfile.Avalonia11, FrameworkProfile.For(FrameworkFamily.Avalonia, 11));
         Assert.Null(FrameworkProfile.For(FrameworkFamily.Avalonia, 10));
         Assert.Equal(FrameworkFamily.Maui, FrameworkProfile.FamilyOf(XNamespace.Get(FrameworkProfile.MauiNamespace)));

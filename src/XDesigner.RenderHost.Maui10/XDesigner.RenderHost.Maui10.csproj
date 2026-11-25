@@ -9,6 +9,25 @@
 
   <Import Project="..\XDesigner.RenderHost.Maui\XDesigner.RenderHost.Maui.props" />
 
+  <!-- The Windows App SDK parts the renderer never uses, at the versions MAUI 10.0.130 brings (see the Maui11 project). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK.AI" VersionOverride="1.8.76" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.ML" VersionOverride="1.8.2197" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Widgets" VersionOverride="1.8.251231004" ExcludeAssets="all" />
+  </ItemGroup>
+
+  <!--
+    Windows App SDK 1.8's self-contained runtime copies those parts' native files itself, outside deps.json (so nothing
+    loads them at startup): they're removed from the output (about 50 MB).
+  -->
+  <Target Name="RemoveUnusedWindowsAppSdkParts" AfterTargets="Build;Publish">
+    <ItemGroup>
+      <_UnusedWindowsAppSdkPart Include="$(OutDir)onnxruntime.dll;$(OutDir)DirectML.dll;$(OutDir)NPUDetect.dll;$(OutDir)Microsoft.Windows.AI.*;$(OutDir)Microsoft.Windows.Internal.AI.*;$(OutDir)Microsoft.Windows.Widgets.*" />
+      <_UnusedWindowsAppSdkPart Include="$(PublishDir)onnxruntime.dll;$(PublishDir)DirectML.dll;$(PublishDir)NPUDetect.dll;$(PublishDir)Microsoft.Windows.AI.*;$(PublishDir)Microsoft.Windows.Internal.AI.*;$(PublishDir)Microsoft.Windows.Widgets.*" Condition="'$(PublishDir)' != ''" />
+    </ItemGroup>
+    <Delete Files="@(_UnusedWindowsAppSdkPart)" />
+  </Target>
+
   <ItemGroup>
     <Compile Include="..\XDesigner.RenderHost.Maui\**\*.cs" Exclude="..\XDesigner.RenderHost.Maui\bin\**;..\XDesigner.RenderHost.Maui\obj\**" LinkBase="Shared" />
     <MauiXaml Remove="**" />

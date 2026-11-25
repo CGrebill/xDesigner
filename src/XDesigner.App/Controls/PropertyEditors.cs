@@ -26,7 +26,7 @@ internal sealed class PropertyEditorContext
     /// <summary>Font names for the FontFamily list; may be empty while loading.</summary>
     public required Func<IReadOnlyList<string>> FontFamilies { get; init; }
 
-    /// <summary>The document's project folder (images live in its Assets folder, §12); null without a project.</summary>
+    /// <summary>The document's project folder (images live in its images folder, §12); null without a project.</summary>
     public required Func<string?> ProjectDirectory { get; init; }
 
     /// <summary>The document's framework (how image paths are written).</summary>
@@ -78,13 +78,17 @@ internal abstract class PropertyEditor(PropertyEditorContext context)
         return problem;
     }
 
-    /// <summary>The effective value as shown greyed in an empty box ("Auto" for NaN sizes).</summary>
+    /// <summary>The effective value as shown greyed in an empty box ("Auto" for unset sizes: NaN, MAUI's -1).</summary>
     protected static string Display(PropertyRow row) => row.IsMixed ? "(different values)" : row.EffectiveValue switch
     {
         null => "",
         "NaN" => "Auto",
+        "-1" when IsMauiSizeRequest(row.Key) => "Auto", // review L11
         var v => v,
     };
+
+    /// <summary>MAUI's size requests, whose "unset" value is -1.</summary>
+    protected static bool IsMauiSizeRequest(string key) => key.EndsWith("WidthRequest", StringComparison.Ordinal) || key.EndsWith("HeightRequest", StringComparison.Ordinal);
 
     protected static Button SmallButton(string glyph, string tooltip)
     {
@@ -186,6 +190,10 @@ internal sealed class TextPropertyEditor : PropertyEditor
         var current = XamlValueSerializer.TryParseDouble(_box.Text, out var typed) ? typed
             : Row.EffectiveValue is { } eff && XamlValueSerializer.TryParseDouble(eff, out var effective) ? effective
             : 0;
+        if (double.IsNaN(current) || (current < 0 && IsMauiSizeRequest(Row.Key)))
+        {
+            current = 0; // an unset size (Auto) steps from 0, not from NaN or MAUI's -1
+        }
         var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
             .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
         var step = (Row.Key == "Opacity" ? 0.1 : 1) * (shift ? 10 : 1) * direction;
@@ -246,7 +254,8 @@ internal sealed class TextPropertyEditor : PropertyEditor
     {
         ValueKind.String or ValueKind.Object => MultilineButton(),
         ValueKind.Thickness => SidesButton(["Left", "Top", "Right", "Bottom"], (l, t, r, b) => XamlValueText.Thickness(l, t, r, b)),
-        ValueKind.CornerRadius => SidesButton(["Top left", "Top right", "Bottom right", "Bottom left"], (a, b, c, d) => XamlValueText.CornerRadius(a, b, c, d)),
+        // In the framework's own order (MAUI's differs, review M16); the four numbers are written in that order.
+        ValueKind.CornerRadius => SidesButton([.. (Context.Profile() ?? Core.Frameworks.FrameworkProfile.Avalonia12).CornerNames], (a, b, c, d) => XamlValueText.CornerRadius(a, b, c, d)),
         ValueKind.FontFamily => FontButton(),
         ValueKind.ImageSource => ImageButton(),
         _ => null,
@@ -281,7 +290,7 @@ internal sealed class TextPropertyEditor : PropertyEditor
             remove.IsEnabled = Row.IsSet;
             if (dir is null)
             {
-                note.Text = "Images are packaged with a project. Open the project this file belongs to (Project › Open project) to add one.";
+                note.Text = "Images are packaged with a project. Open the project this file belongs to (Project ▸ Open project) to add one.";
                 list.Visibility = Visibility.Collapsed;
                 return;
             }
@@ -289,8 +298,8 @@ internal sealed class TextPropertyEditor : PropertyEditor
             var images = Core.Assets.ProjectAssets.ListImages(dir, Context.Profile());
             list.Visibility = images.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             note.Text = images.Count > 0
-                ? "Pick one of the project's images, or Browse… to copy another into its Assets folder."
-                : "The project has no images yet. Browse… copies one into its Assets folder.";
+                ? $"Pick one of the project's images, or Browse… to copy another into its {(Context.Profile()?.AssetsFolder ?? "Assets")} folder."
+                : $"The project has no images yet. Browse… copies one into its {(Context.Profile()?.AssetsFolder ?? "Assets")} folder.";
             foreach (var image in images)
             {
                 list.Items.Add(ImageRow(dir, image, Context.Profile()));
@@ -325,7 +334,9 @@ internal sealed class TextPropertyEditor : PropertyEditor
         {
             try
             {
-                thumbnail.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(file)) { DecodePixelWidth = 32 };
+                thumbnail.Source = file.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)
+                    ? new Microsoft.UI.Xaml.Media.Imaging.SvgImageSource(new Uri(file)) { RasterizePixelWidth = 32 } // MAUI SVG images (review L9)
+                    : new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(file)) { DecodePixelWidth = 32 };
             }
             catch (UriFormatException)
             {

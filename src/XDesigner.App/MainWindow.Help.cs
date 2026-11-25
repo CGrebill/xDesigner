@@ -61,11 +61,11 @@ public sealed partial class MainWindow
                 Children =
                 {
                     new TextBlock { Text = $"Version {ProductVersion}", Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
-                    new TextBlock { Text = "A visual designer for Avalonia UI: drag controls onto a form, set their properties, and write only the C# behind them.", TextWrapping = TextWrapping.Wrap },
+                    new TextBlock { Text = "A visual designer for Avalonia UI, WinUI 3 and .NET MAUI: drag controls onto a form, set their properties, and write only the C# behind them.", TextWrapping = TextWrapping.Wrap },
                     new TextBlock { Text = Copyright ?? "", Foreground = secondary },
                     new TextBlock
                     {
-                        Text = "Licensed under the PolyForm Noncommercial License 1.0.0 (Help › License). Not affiliated with or endorsed by the Avalonia project or AvaloniaUI OÜ.",
+                        Text = "Licensed under the PolyForm Noncommercial License 1.0.0 (Help ▸ License). Not affiliated with or endorsed by the Avalonia project, AvaloniaUI OÜ or Microsoft.",
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = secondary,
                     },

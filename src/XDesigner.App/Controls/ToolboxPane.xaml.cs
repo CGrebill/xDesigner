@@ -81,7 +81,7 @@ public sealed partial class ToolboxPane : UserControl
         if (e.Items.FirstOrDefault() is ToolboxItem item)
         {
             ToolboxDrag.Current = item;
-            e.Data.SetText(ToolboxDrag.DataPrefix + item.Type.FullName);
+            e.Data.SetText(ToolboxDrag.DataPrefix + item.Type.FullName); // for other apps (the designer itself reads ToolboxDrag.Current)
             e.Data.RequestedOperation = DataPackageOperation.Copy;
         }
         else

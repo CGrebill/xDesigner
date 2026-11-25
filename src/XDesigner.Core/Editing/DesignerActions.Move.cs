@@ -28,6 +28,18 @@ public sealed partial class DesignerActions
         ("Canvas.Left", PanelKind.Canvas), ("Canvas.Top", PanelKind.Canvas), ("Canvas.Right", PanelKind.Canvas), ("Canvas.Bottom", PanelKind.Canvas),
         ("Grid.Row", PanelKind.Grid), ("Grid.Column", PanelKind.Grid), ("Grid.RowSpan", PanelKind.Grid), ("Grid.ColumnSpan", PanelKind.Grid),
         ("DockPanel.Dock", PanelKind.DockPanel),
+
+        // MAUI's FlexLayout (reported as a WrapPanel), WinUI's RelativePanel and VariableSizedWrapGrid (reported as Other).
+        ("FlexLayout.Grow", PanelKind.WrapPanel), ("FlexLayout.Shrink", PanelKind.WrapPanel), ("FlexLayout.Basis", PanelKind.WrapPanel),
+        ("FlexLayout.AlignSelf", PanelKind.WrapPanel), ("FlexLayout.Order", PanelKind.WrapPanel),
+        ("RelativePanel.Above", PanelKind.Other), ("RelativePanel.Below", PanelKind.Other), ("RelativePanel.LeftOf", PanelKind.Other),
+        ("RelativePanel.RightOf", PanelKind.Other), ("RelativePanel.AlignLeftWith", PanelKind.Other), ("RelativePanel.AlignRightWith", PanelKind.Other),
+        ("RelativePanel.AlignTopWith", PanelKind.Other), ("RelativePanel.AlignBottomWith", PanelKind.Other),
+        ("RelativePanel.AlignHorizontalCenterWith", PanelKind.Other), ("RelativePanel.AlignVerticalCenterWith", PanelKind.Other),
+        ("RelativePanel.AlignLeftWithPanel", PanelKind.Other), ("RelativePanel.AlignRightWithPanel", PanelKind.Other),
+        ("RelativePanel.AlignTopWithPanel", PanelKind.Other), ("RelativePanel.AlignBottomWithPanel", PanelKind.Other),
+        ("RelativePanel.AlignHorizontalCenterWithPanel", PanelKind.Other), ("RelativePanel.AlignVerticalCenterWithPanel", PanelKind.Other),
+        ("VariableSizedWrapGrid.RowSpan", PanelKind.Other), ("VariableSizedWrapGrid.ColumnSpan", PanelKind.Other),
     ];
 
     /// <summary>Attached properties a placement in that kind of panel decides (so they're cleared when the plan doesn't set them).</summary>

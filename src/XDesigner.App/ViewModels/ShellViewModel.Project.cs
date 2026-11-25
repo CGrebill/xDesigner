@@ -15,8 +15,8 @@ public sealed partial class ShellViewModel
     private static readonly TimeSpan FileChangeSettle = TimeSpan.FromMilliseconds(400);
 
     private readonly Dictionary<DocumentViewModel, (FileSystemWatcher Watcher, DispatcherQueueTimer Timer)> _fileWatchers = [];
-    private FileSystemWatcher? _outputWatcher;
-    private DispatcherQueueTimer? _outputTimer;
+    private readonly Dictionary<string, FileSystemWatcher> _outputWatchers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DispatcherQueueTimer> _outputTimers = new(StringComparer.OrdinalIgnoreCase);
     private DateTime _ownBuildFinished = DateTime.MinValue;
 
     /// <summary>The open project, if any (documents of other folders still open on their own).</summary>
@@ -46,26 +46,17 @@ public sealed partial class ShellViewModel
 
     /// <summary>The framework of <see cref="Project"/> (what Project ▸ Add creates), or null without a project.</summary>
     public Core.Frameworks.FrameworkProfile? ProjectProfile =>
-        Project is { } project ? Solution?.Find(project.ProjectPath)?.Framework.Profile ?? project.DetectFramework().Profile : null;
+        Project is { } project ? Solution?.Find(project.ProjectPath)?.Framework.Profile : null; // Project is always one of Solution's
 
     /// <summary>Opens a <c>.csproj</c>, <c>.sln</c>/<c>.slnx</c> or a XAML file.</summary>
     public async Task OpenAnyAsync(string path)
     {
         switch (Path.GetExtension(path).ToLowerInvariant())
         {
-            case ".csproj":
-                await OpenProjectAsync(path);
-                if (Project is { } project && string.Equals(project.ProjectPath, Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase))
+            case ".csproj" or ".sln" or ".slnx":
+                if (await OpenAsync(path))
                 {
-                    Remember(path);
-                }
-
-                break;
-            case ".sln" or ".slnx":
-                await OpenSolutionAsync(path);
-                if (Project is not null)
-                {
-                    Remember(path);
+                    Remember(path); // only what opened (review M4)
                 }
 
                 break;
@@ -89,9 +80,42 @@ public sealed partial class ShellViewModel
     /// Opens a solution or project: evaluates every project with MSBuild, picks the startup project, opens its main
     /// window, then builds so the renderers can show the projects' custom controls and styles (D11: build on open).
     /// </summary>
-    private async Task OpenAsync(string path)
+    /// <returns>Whether it opened (false: nothing changed, and the notification says why).</returns>
+    private async Task<bool> OpenAsync(string path)
     {
         var name = Path.GetFileName(path);
+
+        // One open at a time, and not into a running build: its results belong to the solution it started for (review M3).
+        if (_openBusy)
+        {
+            RaiseNotify(NotifyKind.Warning, $"Another project is still opening. Open {name} when it's done.");
+            return false;
+        }
+
+        SetBusy(ref _openBusy, true);
+        try
+        {
+            if (IsBuilding || _buildBusy)
+            {
+                AppendLog($"Waiting for the running build to finish before opening {name}…");
+                while (IsBuilding || _buildBusy)
+                {
+                    await Task.Delay(200);
+                }
+            }
+
+            return await OpenCoreAsync(path, name);
+        }
+        finally
+        {
+            SetBusy(ref _openBusy, false);
+        }
+    }
+
+    private bool _openBusy;
+
+    private async Task<bool> OpenCoreAsync(string path, string name)
+    {
         AppendLog($"Opening {name}…");
         SolutionModel solution;
         try
@@ -102,7 +126,7 @@ public sealed partial class ShellViewModel
         {
             AppendLog(ex.Message);
             RaiseNotify(NotifyKind.Error, $"Couldn't open {name}: MSBuild couldn't read it. Details are in Output.");
-            return;
+            return false;
         }
 
         foreach (var project in solution.Projects)
@@ -110,20 +134,28 @@ public sealed partial class ShellViewModel
             AppendLog($"Project {project.Info.Name}: {project.Framework.Profile?.DisplayName ?? "no UI framework the designer knows"}, {project.Info.TargetFramework}, {project.Info.OutputType}");
         }
 
-        Solution = solution;
         if (solution.DefaultStartup is not { } startup)
         {
-            RaiseNotify(NotifyKind.Warning, $"{name} has no C# projects the designer can read.");
-            return;
+            // Nothing to open: the solution open before stays as it was (review M4).
+            RaiseNotify(NotifyKind.Warning, $"{name} has no C# projects the designer can read, so it wasn't opened.");
+            return false;
         }
 
+        // The startup project chosen last time this solution was open, if it's still in it (review L24).
+        if (Settings.StartupProjects.GetValueOrDefault(Path.GetFullPath(path)) is { } remembered && solution.Find(remembered) is { } chosen)
+        {
+            startup = chosen;
+        }
+
+        CloseProject();
+        Solution = solution;
         if (!solution.DesignableProjects.Any())
         {
             RaiseNotify(NotifyKind.Warning, solution.Projects.Select(p => p.Framework.Problem(p.Info.Name)).FirstOrDefault(p => p is not null)
                 ?? $"{name} has no project with XAML files.");
         }
 
-        SetStartupProject(startup);
+        SetStartupProject(startup, remember: false);
         _ = WarnAboutPreviewSdkAsync(startup.Info);
 
         foreach (var doc in Documents)
@@ -139,25 +171,42 @@ public sealed partial class ShellViewModel
             await OpenFileAsync(main);
         }
 
-        await BuildAsync();
+        WatchProjectOutputs(solution);
+        if (!await BuildAsync() && !IsBuilding)
+        {
+            AppendLog($"{name} wasn't built after opening; build it with Project ▸ Rebuild to show its custom controls.");
+        }
+
+        StopUnusedHostsSoon(); // the previous solution's renderers, and the "no project" one used before the build
+        return true;
     }
 
     /// <summary>The project Run starts and Project ▸ Add adds to (Solution Explorer ▸ Set as startup project).</summary>
-    public void SetStartupProject(SolutionProject project)
+    /// <param name="remember">The user chose it: it's the startup project the next time this solution opens (review L24).</param>
+    public void SetStartupProject(SolutionProject project, bool remember = true)
     {
         Project = project.Info;
         RefreshProjectFiles();
-        WatchProjectOutput(project.Info);
         AppendLog($"Startup project: {project.Label}.");
+        if (remember && Solution?.SolutionPath is { } solutionPath)
+        {
+            Settings.StartupProjects[solutionPath] = project.Info.ProjectPath;
+            SaveSettings();
+        }
     }
 
     public void CloseProject()
     {
-        _outputWatcher?.Dispose();
-        _outputWatcher = null;
+        foreach (var watcher in _outputWatchers.Values)
+        {
+            watcher.Dispose();
+        }
+
+        _outputWatchers.Clear();
         Solution = null;
         Project = null;
         ProjectFiles = [];
+        Diagnostics.Clear(); // the closed solution's errors (review L25)
         ProjectFilesChanged?.Invoke();
     }
 
@@ -181,20 +230,45 @@ public sealed partial class ShellViewModel
             return false;
         }
 
-        _buildBusy = true;
+        SetBusy(ref _buildBusy, true);
+        using var cancel = new CancellationTokenSource();
+        _buildCancel = cancel;
         try
         {
-            return await BuildCoreAsync(project, saveDocuments);
+            return await BuildCoreAsync(project, saveDocuments, cancel.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            IsBuilding = false;
+            AppendBuild("Build cancelled.");
+            RaiseNotify(NotifyKind.Warning, "The build was cancelled.");
+            return false;
         }
         finally
         {
-            _buildBusy = false;
+            _buildCancel = null;
+            SetBusy(ref _buildBusy, false);
         }
     }
 
     private bool _buildBusy;
+    private CancellationTokenSource? _buildCancel;
 
-    private async Task<bool> BuildCoreAsync(ProjectInfo project, bool saveDocuments)
+    /// <summary>Project ▸ Cancel build, and closing the designer: stops the running <c>dotnet build</c> (review L23).</summary>
+    public void CancelBuild() => _buildCancel?.Cancel();
+
+    /// <summary>A build, a run or an open is under way: Run and Rebuild do nothing until it's over, so they show disabled (review L22).</summary>
+    public bool IsBusy => IsBuilding || _buildBusy || _runBusy || _openBusy;
+
+    partial void OnIsBuildingChanged(bool value) => OnPropertyChanged(nameof(IsBusy));
+
+    private void SetBusy(ref bool flag, bool value)
+    {
+        flag = value;
+        OnPropertyChanged(nameof(IsBusy));
+    }
+
+    private async Task<bool> BuildCoreAsync(ProjectInfo project, bool saveDocuments, CancellationToken cancellationToken)
     {
         await StopRunForBuildAsync();
 
@@ -218,7 +292,9 @@ public sealed partial class ShellViewModel
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                AppendLog($"Could not save {doc.Title} before building: {ex.Message}");
+                // Built anyway, from the file on disk: say so where it's seen (review L25, §16).
+                AppendLog($"Couldn't save {doc.Title} before building: {ex.Message}");
+                RaiseNotify(NotifyKind.Warning, $"Couldn't save {doc.Title} ({ex.Message}). The build uses the version on disk, without your latest changes.");
             }
         }
 
@@ -226,11 +302,12 @@ public sealed partial class ShellViewModel
         BuildLines.Clear();
         AppendBuild($"Building {Path.GetFileName(target)} ({target})…");
         BuildResult result;
+        IReadOnlyList<BuildStep> steps = [];
+        var stepResults = new List<BuildResult>();
         try
         {
             // A solution with WinUI projects is built project by project, each with its platform (SolutionModel.BuildSteps).
-            var steps = solution?.BuildSteps ?? [new BuildStep(project.ProjectPath, project.Platform, project.BuildFramework)];
-            var results = new List<BuildResult>();
+            steps = solution?.BuildSteps ?? [new BuildStep(project.ProjectPath, project.Platform, project.BuildFramework)];
             foreach (var step in steps)
             {
                 if (steps.Count > 1)
@@ -238,10 +315,11 @@ public sealed partial class ShellViewModel
                     AppendBuild($"Building {Path.GetFileName(step.Path)}{((step.Platform ?? step.Framework) is { } detail ? $" ({detail})" : "")}…");
                 }
 
-                results.Add(await BuildRunner.BuildAsync(step.Path, line => RunOnUi(() => AppendBuild(line)), platform: step.Platform, framework: step.Framework));
+                stepResults.Add(await BuildRunner.BuildAsync(step.Path, line => RunOnUi(() => AppendBuild(line)), platform: step.Platform,
+                    framework: step.Framework, solution: step.Solution, cancellationToken: cancellationToken));
             }
 
-            result = BuildResult.Combine(results);
+            result = BuildResult.Combine(stepResults);
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException)
         {
@@ -259,7 +337,7 @@ public sealed partial class ShellViewModel
         Diagnostics.Clear();
         foreach (var diagnostic in result.Diagnostics.OrderByDescending(d => d.IsError).Distinct())
         {
-            Diagnostics.Add(new DiagnosticRow(diagnostic));
+            Diagnostics.Add(new DiagnosticRow(diagnostic, Path.GetDirectoryName(target)));
         }
 
         var seconds = $"{result.Duration.TotalSeconds:0.0} s";
@@ -270,17 +348,12 @@ public sealed partial class ShellViewModel
             : $"Build failed in {seconds}: {errors.Count} error{(errors.Count == 1 ? "" : "s")}.");
         RefreshProjectFiles();
 
-        if (!result.Succeeded)
-        {
-            var first = errors.FirstOrDefault()?.ToString() ?? "see Output ▸ Build";
-            RaiseNotify(NotifyKind.Error, $"Build failed ({errors.Count} error{(errors.Count == 1 ? "" : "s")}): {first}",
-                [new NotifyAction("Show build output", () => ShowBuildOutput?.Invoke())]);
-            return false;
-        }
-
-        // Every project with XAML files: its build output (and so its framework version) may be new.
-        var built = solution is not null ? solution.Projects.Where(p => p.XamlFiles.Count > 0).Select(p => p.Info).ToList() : [project];
+        // Every project with XAML files: its build output (and so its framework version) may be new. When the build failed,
+        // still the projects that did build: one broken project mustn't keep the others' renderers out of date (review M1).
+        var candidates = solution is not null ? solution.Projects.Where(p => p.XamlFiles.Count > 0).Select(p => p.Info).ToList() : [project];
+        var built = result.Succeeded ? candidates : candidates.Where(info => BuiltDespiteFailure(info, steps, stepResults)).ToList();
         var problems = new List<string>();
+        var updated = Solution;
         foreach (var info in built)
         {
             if (await ApplyBuildAsync(info) is { } problem)
@@ -288,10 +361,26 @@ public sealed partial class ShellViewModel
                 problems.Add(problem);
             }
 
-            if (Solution is { } current && current.Find(info.ProjectPath) is not null)
+            if (updated?.Find(info.ProjectPath) is not null)
             {
-                Solution = current.With(SolutionModel.Describe(info));
+                updated = updated.With(SolutionModel.Describe(info));
             }
+        }
+
+        if (updated is not null && !ReferenceEquals(updated, Solution) && ReferenceEquals(Solution, solution))
+        {
+            Solution = updated; // once, so Solution Explorer is rebuilt once per build (review L18)
+        }
+
+        StopUnusedHostsSoon(); // documents may have moved to the new build's renderer
+
+        if (!result.Succeeded)
+        {
+            var first = errors.FirstOrDefault()?.ToString() ?? "see Output ▸ Build";
+            var also = built.Count > 0 ? $" ({string.Join(", ", built.Select(b => b.Name))} built and reloaded.)" : "";
+            RaiseNotify(NotifyKind.Error, $"Build failed ({errors.Count} error{(errors.Count == 1 ? "" : "s")}): {first}{also}",
+                [new NotifyAction("Show build output", () => ShowBuildOutput?.Invoke())]);
+            return false;
         }
 
         if (problems.Count > 0)
@@ -304,6 +393,21 @@ public sealed partial class ShellViewModel
         var names = built.Count == 1 ? built[0].Name : $"the {built.Count} projects";
         RaiseNotify(NotifyKind.Success, $"Build succeeded in {seconds}. Custom controls and styles from {names} are up to date.");
         return true;
+    }
+
+    /// <summary>
+    /// Whether a project got a new build although the whole build failed: its own step succeeded (a solution built project by
+    /// project), or its assembly was written since the renderer loaded it (one solution build where another project failed).
+    /// </summary>
+    private bool BuiltDespiteFailure(ProjectInfo info, IReadOnlyList<BuildStep> steps, IReadOnlyList<BuildResult> results)
+    {
+        var index = steps.ToList().FindIndex(s => string.Equals(s.Path, info.ProjectPath, StringComparison.OrdinalIgnoreCase));
+        if (index >= 0 && index < results.Count && steps.Count > 1)
+        {
+            return results[index].Succeeded;
+        }
+
+        return File.Exists(info.TargetPath) && !_hosts.IsCurrent(info.TargetPath);
     }
 
     /// <summary>The last build's errors and warnings (Output ▸ Error List).</summary>
@@ -322,8 +426,11 @@ public sealed partial class ShellViewModel
             ? string.Equals(owner.Info.ProjectPath, project.ProjectPath, StringComparison.OrdinalIgnoreCase)
             : project.Contains(d.FilePath);
 
-        var detected = FrameworkDetector.FromBuildOutput(project.TargetPath);
-        if (detected.Family is not null && detected.Problem(project.Name) is { } problem)
+        var detected = project.DetectFramework(); // the build, checked against what MSBuild evaluated (UseWinUI)
+        var platformProblem = detected.Family == FrameworkFamily.WinUI && project.Platform is { } platform && !string.Equals(platform, "x64", StringComparison.OrdinalIgnoreCase)
+            ? $"{project.Name} is built for {platform}, and the designer's WinUI renderer is x64, so it can't load the build. Build it for x64 (or remove its <Platform>) to see its controls."
+            : null; // review M25
+        if ((detected.Family is not null && detected.Problem(project.Name) is { } problem) || (problem = platformProblem) is not null)
         {
             foreach (var doc in Documents.Where(Owns))
             {
@@ -367,13 +474,42 @@ public sealed partial class ShellViewModel
     /// A build outside the designer (VS Code, Visual Studio, a terminal) replaces the assembly: reload it too. The renderer
     /// loads assemblies from memory, so it never blocks those builds.
     /// </summary>
+    /// <summary>Every project of the solution with XAML files, not only the startup project (review M2).</summary>
+    private void WatchProjectOutputs(SolutionModel solution)
+    {
+        foreach (var project in solution.Projects.Where(p => p.XamlFiles.Count > 0))
+        {
+            WatchProjectOutput(project.Info);
+        }
+    }
+
+    /// <summary>
+    /// Any assembly, resource index or compiled XAML written to the project's output folder: a library rebuilt in place
+    /// copies its new dll there without the project's own assembly changing (reference assemblies, review M2).
+    /// </summary>
     private void WatchProjectOutput(ProjectInfo project)
     {
-        _outputWatcher?.Dispose();
-        _outputTimer ??= CreateTimer(ExternalBuildSettle, OnExternalBuild);
+        if (_outputWatchers.Remove(project.ProjectPath, out var old))
+        {
+            old.Dispose();
+        }
+
+        if (!_outputTimers.ContainsKey(project.ProjectPath))
+        {
+            _outputTimers[project.ProjectPath] = CreateTimer(ExternalBuildSettle, () => OnExternalBuild(project.ProjectPath));
+        }
+
+        var output = Path.GetDirectoryName(project.TargetPath);
+        if (string.IsNullOrEmpty(output))
+        {
+            return;
+        }
+
+        FileSystemWatcher watcher;
         try
         {
-            _outputWatcher = new FileSystemWatcher(project.Directory, Path.GetFileName(project.TargetPath))
+            // The project folder (the output folder may not exist before the first build), filtered to the output below.
+            watcher = new FileSystemWatcher(project.Directory)
             {
                 IncludeSubdirectories = true,
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
@@ -385,28 +521,41 @@ public sealed partial class ShellViewModel
             return;
         }
 
+        var prefix = output + Path.DirectorySeparatorChar;
         void Changed(object sender, FileSystemEventArgs e)
         {
-            if (string.Equals(e.FullPath, project.TargetPath, StringComparison.OrdinalIgnoreCase))
+            if (e.FullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && Path.GetExtension(e.FullPath).ToLowerInvariant() is ".dll" or ".pri" or ".xbf" or ".json")
             {
                 RunOnUi(() =>
                 {
-                    _outputTimer!.Stop();
-                    _outputTimer.Start(); // wait until the build has finished writing
+                    if (_outputTimers.TryGetValue(project.ProjectPath, out var timer))
+                    {
+                        timer.Stop();
+                        timer.Start(); // wait until the build has finished writing
+                    }
                 });
             }
         }
 
-        _outputWatcher.Changed += Changed;
-        _outputWatcher.Created += Changed;
-        _outputWatcher.Renamed += (s, e) => Changed(s, e);
+        watcher.Changed += Changed;
+        watcher.Created += Changed;
+        watcher.Renamed += (s, e) => Changed(s, e);
+        _outputWatchers[project.ProjectPath] = watcher;
     }
 
-    private async void OnExternalBuild()
+    private async void OnExternalBuild(string projectPath)
     {
-        if (Project is not { } project || IsBuilding || DateTime.UtcNow - _ownBuildFinished < ExternalBuildSettle + TimeSpan.FromSeconds(1))
+        if (Solution?.Find(projectPath)?.Info is not { } project || IsBuilding || _buildBusy
+            || DateTime.UtcNow - _ownBuildFinished < ExternalBuildSettle + TimeSpan.FromSeconds(1))
         {
             return; // our own build already handled it
+        }
+
+        var hasDocuments = Documents.Any(d => string.Equals(Solution?.ProjectContaining(d.FilePath)?.Info.ProjectPath, projectPath, StringComparison.OrdinalIgnoreCase));
+        if (!hasDocuments || _hosts.IsCurrent(project.TargetPath))
+        {
+            return; // nothing open uses it, or nothing the renderer loads changed
         }
 
         AppendLog($"{project.Name} was rebuilt outside the designer; reloading its controls.");
@@ -465,6 +614,7 @@ public sealed partial class ShellViewModel
         });
         watcher.Changed += Changed;
         watcher.Created += Changed;
+        watcher.Deleted += Changed; // deleted, or renamed away (a branch switch): review L19
         watcher.Renamed += (s, e) => Changed(s, e);
         watcher.EnableRaisingEvents = true;
         _fileWatchers[document] = (watcher, timer);
@@ -481,6 +631,24 @@ public sealed partial class ShellViewModel
             return;
         }
 
+        if (!File.Exists(document.FilePath))
+        {
+            // Saving would quietly create it again (in another branch, say): say so once, and ask before saving (review L19).
+            if (!document.MissingOnDisk)
+            {
+                document.MissingOnDisk = true;
+                RaiseNotify(NotifyKind.Warning, $"{document.Title} was deleted or renamed outside the designer. It's still open here; saving it would create it again.",
+                [
+                    new NotifyAction(document.IsDirty ? "Close it (discard changes)" : "Close it", () => _ = CloseDocumentAsync(document)),
+                    new NotifyAction("Keep it open", () => { }),
+                ], sticky: true);
+            }
+
+            return;
+        }
+
+        document.MissingOnDisk = false;
+        document.RecreateOnSave = false;
         string? text = null;
         for (var attempt = 0; attempt < 5 && text is null; attempt++)
         {
@@ -527,6 +695,24 @@ public sealed partial class ShellViewModel
     /// </summary>
     public bool CanSaveOverDisk(DocumentViewModel document)
     {
+        if (document.MissingOnDisk && !document.RecreateOnSave && !File.Exists(document.FilePath))
+        {
+            AppendLog($"Didn't save {document.Title}: it was deleted or renamed outside the designer.");
+            RaiseNotify(NotifyKind.Warning, $"{document.Title} was deleted or renamed outside the designer. Save it again where it was?",
+            [
+                new NotifyAction("Save it again", () =>
+                {
+                    document.RecreateOnSave = true;
+                    if (CanSaveOverDisk(document))
+                    {
+                        SaveDocument(document);
+                    }
+                }),
+                new NotifyAction(document.IsDirty ? "Close it (discard changes)" : "Close it", () => _ = CloseDocumentAsync(document)),
+            ], sticky: true);
+            return false;
+        }
+
         if (document.TextChangedOnDisk() is not { } text)
         {
             return true;
@@ -535,6 +721,19 @@ public sealed partial class ShellViewModel
         AppendLog($"Didn't save {document.Title}: it was changed outside the designer. Choose Reload or Keep mine first.");
         ShowDiskConflict(document, text);
         return false;
+    }
+
+    private void SaveDocument(DocumentViewModel document)
+    {
+        try
+        {
+            document.Save();
+            AppendLog($"Saved {document.Title}.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            RaiseNotify(NotifyKind.Error, $"Couldn't save {document.Title}: {ex.Message}");
+        }
     }
 
     /// <summary>Replaces a document with a fresh load of its file in the same tab, keeping zoom, theme and (where possible) the selection.</summary>

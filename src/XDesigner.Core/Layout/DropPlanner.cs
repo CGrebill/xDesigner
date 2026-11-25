@@ -79,7 +79,7 @@ public static class DropPlanner
             }
         }
 
-        reason = "Nothing here can hold another control. Add a panel (Grid, StackPanel, Canvas…) first.";
+        reason = $"Nothing here can hold another control. Add a panel ({catalog.Profile.PanelExamples}) first.";
         return null;
     }
 
@@ -100,17 +100,22 @@ public static class DropPlanner
     public static bool Accepts(ElementNode node, ControlTypeInfo type, IReadOnlySet<int>? exclude = null) => type.Content switch
     {
         ContentModel.Children or ContentModel.Items => true,
-        ContentModel.SingleContent => IsEmpty(node, "Content", exclude),
+        ContentModel.SingleContent => IsEmpty(node, type.ContentPropertyName ?? "Content", exclude),
         ContentModel.SingleChild => IsEmpty(node, type.ContentPropertyName ?? "Child", exclude),
         _ => false,
     };
 
-    private static bool IsEmpty(ElementNode node, string contentProperty, IReadOnlySet<int>? exclude) =>
-        node.Element.Attribute(contentProperty) is null
-        && !node.Element.Elements().Any(e =>
-            (RenderCopyBuilder.IsObjectElement(e) && exclude?.Contains(node.Document.NodeFor(e).Id) != true)
-            || e.Name.LocalName.EndsWith("." + contentProperty, StringComparison.Ordinal))
-        && string.IsNullOrWhiteSpace(string.Concat(node.Element.Nodes().OfType<XText>().Select(t => t.Value)));
+    private static bool IsEmpty(ElementNode node, string contentProperty, IReadOnlySet<int>? exclude)
+    {
+        bool HasContent(XElement container) =>
+            container.Elements().Any(e => RenderCopyBuilder.IsObjectElement(e) && exclude?.Contains(node.Document.NodeFor(e).Id) != true)
+            || !string.IsNullOrWhiteSpace(string.Concat(container.Nodes().OfType<XText>().Select(t => t.Value)));
+
+        // An empty <Border.Child></Border.Child> (left by deleting its control) doesn't make the element full.
+        return node.Element.Attribute(contentProperty) is null
+            && !HasContent(node.Element)
+            && !node.Element.Elements().Any(e => e.Name.LocalName.EndsWith("." + contentProperty, StringComparison.Ordinal) && HasContent(e));
+    }
 
     /// <param name="x">Pointer position: picks insertion points (stack, wrap, dock).</param>
     /// <param name="px">Where the element's top-left will be: sets positions (Canvas, Grid cell + margin, other panels).</param>

@@ -38,9 +38,9 @@ public enum ValueSource
 }
 
 /// <summary>
-/// One property a control type can set in XAML: its own and inherited Avalonia properties, plain settable
-/// CLR properties of simple types, and attached properties of the common layout owners (Grid, Canvas,
-/// DockPanel, ToolTip, ScrollViewer). Categories and the "advanced" flag are decided by the app (Core), not here.
+/// One property a control type can set in XAML: its own and inherited framework properties (Avalonia properties, WinUI
+/// dependency properties, MAUI bindable properties), plain settable CLR properties of simple types, and attached
+/// properties of the common layout owners (Grid, Canvas, DockPanel, AbsoluteLayout, RelativePanel, ToolTip…). Categories and the "advanced" flag are decided by the app (Core), not here.
 /// </summary>
 /// <param name="Name">Property name (<c>Background</c>, <c>Row</c>).</param>
 /// <param name="OwnerName">Short name of the owner type; for attached properties the XAML prefix (<c>Grid</c>).</param>

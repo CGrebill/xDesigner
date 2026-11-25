@@ -57,6 +57,9 @@ public sealed class DesignerSettings
     /// <summary>View ▸ Output.</summary>
     public bool ShowOutput { get; set; } = true;
 
+    /// <summary>The startup project chosen for a solution (solution path → project path), used when it opens again.</summary>
+    public Dictionary<string, string> StartupProjects { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Puts <paramref name="path"/> first in <see cref="Recent"/>.</summary>
     public void AddRecent(string path)
     {
@@ -95,6 +98,9 @@ public sealed class SettingsStore(string path)
             // Valid JSON can still say "null" where the app expects a value (a hand-edited file): use the defaults there.
             settings.Recent = settings.Recent?.Where(p => !string.IsNullOrWhiteSpace(p)).ToList() ?? [];
             settings.CustomEditorCommand ??= "";
+            settings.StartupProjects = new Dictionary<string, string>(
+                (settings.StartupProjects ?? []).Where(p => !string.IsNullOrWhiteSpace(p.Key) && !string.IsNullOrWhiteSpace(p.Value)),
+                StringComparer.OrdinalIgnoreCase);
             return settings;
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or NotSupportedException)
@@ -102,6 +108,12 @@ public sealed class SettingsStore(string path)
             return new();
         }
     }
+
+    /// <summary>
+    /// The recent list as the settings file has it now (another running designer may have changed it), or null when there is
+    /// no file: a change to the list is made to that one, so two designers don't lose each other's entries (review L20).
+    /// </summary>
+    public List<string>? ReadRecent() => File.Exists(Path) ? Load().Recent : null;
 
     /// <summary>Writes the settings (to a temporary file first, so a crash never leaves half a file). Returns false on failure.</summary>
     public bool Save(DesignerSettings settings)

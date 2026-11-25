@@ -60,7 +60,7 @@ internal sealed class RenderHostService : IRenderHost
     public Task<PropertyValueDto[]> GetValuesAsync(string documentId, int designId, CancellationToken cancellationToken) =>
         _host.InvokeAsync(() =>
             _renderers.TryGetValue(documentId, out var renderer) && ValueReader.Find(renderer.CurrentRoot, designId) is { } element
-                ? ValueReader.Read(element, _properties.For(element.GetType()))
+                ? ValueReader.Read(element, _properties.For(element.GetType()), renderer.WrittenProperties.GetValueOrDefault(designId))
                 : []);
 
     public Task<EventInfoDto[]> GetEventsAsync(string typeFullName, CancellationToken cancellationToken) =>
@@ -106,7 +106,9 @@ internal sealed class RenderHostService : IRenderHost
                 return [];
             }
 
+            // The registrations only: the lookup cache also holds any name that was looked up, misspelled ones too (review L44).
             return registrar.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Where(f => f.Name is "_embeddedFonts" or "_nativeFonts")
                 .Select(f => f.GetValue(registrar))
                 .OfType<IDictionary>()
                 .SelectMany(d => d.Keys.OfType<string>())

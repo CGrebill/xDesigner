@@ -223,7 +223,7 @@ public class DropAndAddTests
 
         Assert.Equal("200", (string?)onCanvas.Attribute("Width"));
         Assert.Null(inStack.Attribute("Width"));
-        Assert.Equal(["grid1", "grid2"], new[] { onCanvas, inStack }.Select(e => (string?)e.Attribute(XName.Get("Name", XamlNamespaces.Xaml))));
+        Assert.Equal(["grid1", "grid2"], new[] { onCanvas, inStack }.Select(e => (string?)e.Attribute(XName.Get("Name", Frameworks.FrameworkProfile.Xaml2006Namespace))));
     }
 
     [Fact]
@@ -256,6 +256,18 @@ public class DropAndAddTests
 
         Assert.Equal("clr-namespace:My.App.Controls;assembly=My.App", ns.NamespaceName);
         Assert.Null(declaration);
+    }
+
+    /// <summary>A MAUI clr-namespace of another assembly isn't reused just because the CLR namespace matches (review L3).</summary>
+    [Fact]
+    public void ClrNamespaceOfAnotherAssembly_IsNotReused()
+    {
+        var root = XElement.Parse("<ContentPage xmlns=\"http://schemas.microsoft.com/dotnet/2021/maui\" xmlns:local=\"clr-namespace:Shared.Controls;assembly=A\" />");
+
+        var ns = DesignerActions.ElementNamespace(root, "clr-namespace:Shared.Controls;assembly=B", "Shared.Controls", out var declaration);
+
+        Assert.Equal("clr-namespace:Shared.Controls;assembly=B", ns.NamespaceName);
+        Assert.Equal(("controls", "clr-namespace:Shared.Controls;assembly=B"), declaration);
     }
 
     [Fact]

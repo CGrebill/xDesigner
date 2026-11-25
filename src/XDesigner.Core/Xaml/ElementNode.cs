@@ -10,7 +10,8 @@ namespace XDesigner.Core.Xaml;
 public sealed class ElementNode
 {
     /// <summary>Property elements whose contents are the element's visible children (shown in the outline).</summary>
-    private static readonly string[] ContentPropertySuffixes = [".Content", ".Child", ".Children", ".Items"];
+    // WinUI also writes TabView tabs and NavigationView items in collections of their own (review M13).
+    private static readonly string[] ContentPropertySuffixes = [".Content", ".Child", ".Children", ".Items", ".TabItems", ".MenuItems", ".FooterMenuItems"];
 
     internal ElementNode(XamlDocument document, XElement element, int id)
     {
@@ -93,4 +94,13 @@ public sealed class ElementNode
 
     private static bool IsContentPropertyElement(XElement element) =>
         ContentPropertySuffixes.Any(s => element.Name.LocalName.EndsWith(s, StringComparison.Ordinal));
+
+    /// <summary>
+    /// The property element that holds <paramref name="element"/>'s children when they're written in one
+    /// (<c>&lt;StackPanel.Children&gt;</c>) and none are written directly; else null. New children go there too (review M14).
+    /// </summary>
+    public static XElement? ContentHolder(XElement element) =>
+        element.Elements().Any(RenderCopyBuilder.IsObjectElement)
+            ? null
+            : element.Elements().FirstOrDefault(IsContentPropertyElement);
 }

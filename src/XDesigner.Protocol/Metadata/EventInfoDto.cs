@@ -4,8 +4,8 @@ namespace XDesigner.Protocol.Metadata;
 
 /// <summary>
 /// An event a control raises that a XAML attribute can connect to a code-behind method (§9.3, §10): the
-/// control's public CLR events with an <c>(sender, e)</c> handler shape, which covers Avalonia's routed events
-/// (they all have CLR wrappers).
+/// control's public CLR events with an <c>(sender, e)</c> handler shape, which covers Avalonia's and WinUI's routed
+/// events (they all have CLR wrappers) and MAUI's events.
 /// </summary>
 /// <param name="Name">Event name, which is also the XAML attribute (<c>Click</c>).</param>
 /// <param name="IsRouted">A routed event (bubbles up the tree) as opposed to a plain CLR event.</param>

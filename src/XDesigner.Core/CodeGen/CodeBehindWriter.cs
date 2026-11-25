@@ -25,7 +25,7 @@ public sealed class CodeBehindException(string message, Exception? inner = null)
 /// text is spliced in before the class's closing brace, matching the file's indentation and line endings, so the rest
 /// of the file stays byte for byte as it was. Encoding and BOM are kept; the write is atomic.
 /// </summary>
-public static class CodeBehindWriter
+public static partial class CodeBehindWriter
 {
     /// <summary>The code-behind file of a XAML file: <c>MainWindow.axaml</c> → <c>MainWindow.axaml.cs</c>.</summary>
     public static string CodeBehindPathFor(string xamlPath) => xamlPath + ".cs";
@@ -145,7 +145,7 @@ public static class CodeBehindWriter
         var newLine = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
 
         // 1. The using for the args type, if the file doesn't already see its namespace.
-        if (!IsNamespaceVisible(root, cls, signature.ArgsNamespace))
+        if (!IsNamespaceVisible(root, cls, signature.ArgsNamespace) && !GlobalUsings(path).Contains(signature.ArgsNamespace))
         {
             text = AddUsing(text, root, signature.ArgsNamespace, newLine);
             root = CSharpSyntaxTree.ParseText(text).GetCompilationUnitRoot();
@@ -313,6 +313,48 @@ public static class CodeBehindWriter
         var enclosing = string.Join('.', cls.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Reverse().Select(n => n.Name.ToString()));
         return enclosing == ns || enclosing.StartsWith(ns + ".", StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The namespaces the project imports for every file: the build's implicit usings (<c>obj\…\*.GlobalUsings.g.cs</c>; MAUI
+    /// adds its own there) and <c>global using</c>s in the project folder's files. A using for one of them would be
+    /// redundant (review L6). Empty when the file isn't in a project or it hasn't been built.
+    /// </summary>
+    private static HashSet<string> GlobalUsings(string codeBehindPath)
+    {
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        try
+        {
+            var dir = new DirectoryInfo(Path.GetDirectoryName(Path.GetFullPath(codeBehindPath))!);
+            while (dir is not null && !dir.EnumerateFiles("*.csproj").Any())
+            {
+                dir = dir.Parent;
+            }
+
+            if (dir is null)
+            {
+                return result;
+            }
+
+            var obj = Path.Combine(dir.FullName, "obj");
+            var generated = Directory.Exists(obj) ? Directory.EnumerateFiles(obj, "*.GlobalUsings.g.cs", SearchOption.AllDirectories) : [];
+            foreach (var file in generated.Concat(dir.EnumerateFiles("*.cs").Select(f => f.FullName)))
+            {
+                foreach (System.Text.RegularExpressions.Match m in GlobalUsing().Matches(File.ReadAllText(file)))
+                {
+                    result.Add(m.Groups[1].Value);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Can't tell: a using too many is harmless.
+        }
+
+        return result;
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\s*global\s+using\s+(?:global::)?([\w.]+)\s*;", System.Text.RegularExpressions.RegexOptions.Multiline)]
+    private static partial System.Text.RegularExpressions.Regex GlobalUsing();
 
     /// <summary>Adds <c>using ns;</c> among the file's top-level usings (System first, then alphabetical), or at the top.</summary>
     private static string AddUsing(string text, CompilationUnitSyntax root, string ns, string newLine)

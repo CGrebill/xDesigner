@@ -138,6 +138,23 @@ public sealed class PreviewAndAssetsTests : IDisposable
         Assert.Null(ProjectAssets.ToFilePath(project, "/../App2/sibling.png")); // a sibling folder whose name starts with "App"
     }
 
+    /// <summary>MAUI's SVG images are listed, and used, as the PNGs MAUI's build makes of them (review L9).</summary>
+    [Fact]
+    public void Maui_ListsSvgImagesAsPng_AndMapsThemBack()
+    {
+        var project = Path.Combine(_dir, "MauiApp");
+        var images = Directory.CreateDirectory(Path.Combine(project, "Resources", "Images")).FullName;
+        File.WriteAllText(Path.Combine(images, "dotnet_bot.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\" />");
+        File.WriteAllBytes(Path.Combine(images, "red.png"), [1]);
+        var maui = Frameworks.FrameworkProfile.Maui11;
+
+        Assert.Equal(["dotnet_bot.png", "red.png"], ProjectAssets.ListImages(project, maui));
+        Assert.Equal(Path.Combine(images, "dotnet_bot.svg"), ProjectAssets.ToFilePath(project, "dotnet_bot.png", maui));
+        Assert.Equal(Path.Combine(images, "red.png"), ProjectAssets.ToFilePath(project, "red.png", maui));
+        Assert.Empty(ProjectAssets.ListImages(Path.Combine(_dir, "AvaloniaApp")));
+        Assert.DoesNotContain(".svg", ProjectAssets.ImageExtensionsFor(Frameworks.FrameworkProfile.Avalonia12));
+    }
+
     [Fact]
     public void EnsureAvaloniaResource_AddsAnItemGroupOnce_KeepingTheRestOfTheFile()
     {
@@ -149,14 +166,14 @@ public sealed class PreviewAndAssetsTests : IDisposable
             "</Project>\r\n";
         File.WriteAllText(path, original);
 
-        Assert.True(ProjectFileEditor.EnsureAvaloniaResource(path));
+        Assert.True(ProjectFileEditor.EnsureAssetsItem(path, Frameworks.FrameworkProfile.Avalonia12));
         var text = File.ReadAllText(path);
         Assert.Equal(
             original.Replace("</Project>", "  <ItemGroup>\r\n    <AvaloniaResource Include=\"Assets\\**\" />\r\n  </ItemGroup>\r\n\r\n</Project>"),
             text);
         Assert.True(ProjectFileEditor.CoversAssets(XDocument.Parse(text)));
 
-        Assert.False(ProjectFileEditor.EnsureAvaloniaResource(path));
+        Assert.False(ProjectFileEditor.EnsureAssetsItem(path, Frameworks.FrameworkProfile.Avalonia12));
         Assert.Equal(text, File.ReadAllText(path));
     }
 
@@ -168,7 +185,7 @@ public sealed class PreviewAndAssetsTests : IDisposable
         var path = Path.Combine(_dir, "App.csproj");
         File.WriteAllText(path, original);
 
-        Assert.True(ProjectFileEditor.EnsureAvaloniaResource(path));
+        Assert.True(ProjectFileEditor.EnsureAssetsItem(path, Frameworks.FrameworkProfile.Avalonia12));
 
         var text = File.ReadAllText(path);
         var before = XDocument.Parse(original).Root!.Elements().Select(e => e.ToString()).ToList();
@@ -185,7 +202,7 @@ public sealed class PreviewAndAssetsTests : IDisposable
         var original = System.Text.Encoding.Latin1.GetBytes("<Project><!-- Größe --></Project>");
         File.WriteAllBytes(path, original);
 
-        Assert.Throws<InvalidDataException>(() => ProjectFileEditor.EnsureAvaloniaResource(path));
+        Assert.Throws<InvalidDataException>(() => ProjectFileEditor.EnsureAssetsItem(path, Frameworks.FrameworkProfile.Avalonia12));
         Assert.Equal(original, File.ReadAllBytes(path));
     }
 

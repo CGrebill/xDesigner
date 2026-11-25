@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using XDesigner.Core.Editing;
 using XDesigner.Core.Frameworks;
 using XDesigner.Core.Layout;
@@ -105,6 +106,34 @@ public class MauiEditingTests
         Assert.Contains("AbsoluteLayout.LayoutBounds=\"15,26,40,40\"", doc.ToXaml(), StringComparison.Ordinal);
         undo.Undo();
         Assert.Equal(Page, doc.ToXaml());
+    }
+
+    /// <summary>A moved part is written in DIPs, so its proportional flag goes; the others stay proportional (review M9).</summary>
+    [Theory]
+    [InlineData("PositionProportional", null)]
+    [InlineData("All", "SizeProportional")]
+    [InlineData("XProportional,HeightProportional", "HeightProportional")]
+    public void MovingAProportionalChild_WritesDipsAndClearsOnlyThoseFlags(string flags, string? remaining)
+    {
+        var element = XElement.Parse($"""<BoxView AbsoluteLayout.LayoutBounds="0.5,0.5,100,40" AbsoluteLayout.LayoutFlags="{flags}" />""");
+        LayoutVocabulary.Maui.Apply(element, [new(LayoutVocabulary.CanvasLeft, "120"), new(LayoutVocabulary.CanvasTop, "80")]);
+
+        Assert.Equal("120,80,100,40", (string?)element.Attribute("AbsoluteLayout.LayoutBounds"));
+        Assert.Equal(remaining, (string?)element.Attribute("AbsoluteLayout.LayoutFlags"));
+        Assert.True(LayoutVocabulary.Maui.IsProportional(XElement.Parse("""<B AbsoluteLayout.LayoutFlags="PositionProportional" />"""), LayoutVocabulary.CanvasTop));
+    }
+
+    /// <summary>Leaving the AbsoluteLayout keeps the size its bounds gave and drops the flags (review M10).</summary>
+    [Fact]
+    public void LeavingTheAbsoluteLayout_KeepsTheBoundsSizeAsRequests()
+    {
+        var element = XElement.Parse("""<BoxView AbsoluteLayout.LayoutBounds="10,10,100,40" AbsoluteLayout.LayoutFlags="None" />""");
+        LayoutVocabulary.Maui.Apply(element, [new(LayoutVocabulary.CanvasLeft, null), new(LayoutVocabulary.CanvasTop, null)]);
+
+        Assert.Null(element.Attribute("AbsoluteLayout.LayoutBounds"));
+        Assert.Null(element.Attribute("AbsoluteLayout.LayoutFlags"));
+        Assert.Equal("100", (string?)element.Attribute("WidthRequest"));
+        Assert.Equal("40", (string?)element.Attribute("HeightRequest"));
     }
 
     [Fact]

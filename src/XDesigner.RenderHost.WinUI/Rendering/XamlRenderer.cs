@@ -24,6 +24,9 @@ internal sealed partial class XamlRenderer(HostApp host, RenderCopySanitizer san
     /// <summary>The root element of the last successful render (kept alive for value queries).</summary>
     public FrameworkElement? CurrentRoot { get; private set; }
 
+    /// <summary>The last render's Window title, when the document is a Window.</summary>
+    public string? WindowTitle { get; private set; }
+
     public async Task<RenderResult> RenderAsync(RenderRequest request)
     {
         SanitizedXaml copy;
@@ -39,16 +42,22 @@ internal sealed partial class XamlRenderer(HostApp host, RenderCopySanitizer san
             return RenderResult.Failed(request.Version, ToRenderError(ex));
         }
 
-        var width = request.DesignSize?.Width ?? FirstUsable(root.Width, copy.DesignWidth, DefaultDesignWidth);
-        var height = request.DesignSize?.Height ?? FirstUsable(root.Height, copy.DesignHeight, DefaultDesignHeight);
+        // A design size of 0 or NaN (review L35) falls back like a missing one.
+        var width = FirstUsable(request.DesignSize?.Width, root.Width, copy.DesignWidth, DefaultDesignWidth);
+        var height = FirstUsable(request.DesignSize?.Height, root.Height, copy.DesignHeight, DefaultDesignHeight);
         var scale = FrameScale.Effective(width, height, request.Scale);
 
+        // "Default" is the app's own theme when App.xaml sets one (review M26).
+        var theme = request.Theme == ThemeVariantKind.Default && host.UserRequestedTheme is { } appTheme ? appTheme : request.Theme;
+
         FrameworkElement frame;
+        var area = new Grid { Width = width, Height = height };
         try
         {
-            root.Width = width;
-            root.Height = height;
-            frame = FrameCapture.CreateFrame(root, request.Theme, width * scale / host.RasterizationScale, height * scale / host.RasterizationScale);
+            // The root lays out in a design-size area as it would in a window, keeping its own Width/Height, Min/Max and
+            // Margin; setting its size and stretching it in the Viewbox distorted such roots (review M22).
+            area.Children.Add(root);
+            frame = FrameCapture.CreateFrame(area, theme, width * scale / host.RasterizationScale, height * scale / host.RasterizationScale);
             host.Surface.Children.Add(frame);
         }
         catch (Exception ex)
@@ -59,7 +68,7 @@ internal sealed partial class XamlRenderer(HostApp host, RenderCopySanitizer san
         try
         {
             var (pixelWidth, pixelHeight, pixels) = await FrameCapture.CaptureAsync(frame);
-            var layout = LayoutTreeBuilder.Build(root);
+            var layout = LayoutTreeBuilder.Build(area); // measured from the design area: a root's Margin shows
             if (copy.IsWindow && layout is not null && layout.DesignId != 0)
             {
                 // The stand-in Grid is the Window's client area: report it as the Window (a content control, not a grid).
@@ -67,6 +76,7 @@ internal sealed partial class XamlRenderer(HostApp host, RenderCopySanitizer san
             }
 
             ReplaceCurrent(frame, root);
+            WindowTitle = copy.IsWindow ? copy.WindowTitle : null;
 
             var rootKind = copy.IsWindow ? RootKind.Window : root is UserControl ? RootKind.UserControl : RootKind.Other;
             return new RenderResult(

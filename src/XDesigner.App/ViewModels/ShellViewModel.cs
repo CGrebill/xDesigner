@@ -23,6 +23,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _hosts = hosts;
         _dispatcher = dispatcher;
         _hosts.Log += message => RunOnUi(() => AppendLog(message));
+        _hosts.VersionWarning += message => RaiseNotify(NotifyKind.Warning, message); // review M19
         _hosts.HostReady += _ => RunOnUi(UpdateRendererStatus);
         _hosts.HostRestarted += path => RunOnUi(() =>
         {
@@ -75,6 +76,28 @@ public sealed partial class ShellViewModel : ObservableObject
             return existing;
         }
 
+        // Asked again while it's still loading (Solution Explorer, then Project ▸ Files): the same load, one tab (review L21).
+        if (_opening.TryGetValue(path, out var loading))
+        {
+            return await loading;
+        }
+
+        var task = OpenNewFileAsync(path);
+        _opening[path] = task;
+        try
+        {
+            return await task;
+        }
+        finally
+        {
+            _opening.Remove(path);
+        }
+    }
+
+    private readonly Dictionary<string, Task<DocumentViewModel?>> _opening = new(StringComparer.OrdinalIgnoreCase);
+
+    private async Task<DocumentViewModel?> OpenNewFileAsync(string path)
+    {
         XamlDocument xaml;
         try
         {
@@ -82,12 +105,12 @@ public sealed partial class ShellViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AppendLog($"Could not open {path}: {ex.Message}");
+            AppendLog($"Couldn't open {path}: {ex.Message}");
             return null;
         }
         catch (XmlException ex)
         {
-            AppendLog($"Could not open {Path.GetFileName(path)}: it isn't valid XAML ({ex.Message}).");
+            AppendLog($"Couldn't open {Path.GetFileName(path)}: it isn't valid XAML ({ex.Message}).");
             return null;
         }
 
@@ -111,6 +134,13 @@ public sealed partial class ShellViewModel : ObservableObject
         }
 
         var document = new DocumentViewModel(path, xaml, project, _hosts) { Theme = Settings.PreviewTheme };
+        if (document.IsOtherFrameworksProject && owner is not null)
+        {
+            RaiseNotify(NotifyKind.Warning, owner.Framework.Profile is { } profile
+                ? $"{document.Title} isn't {profile.DisplayName} XAML like the rest of {owner.Info.Name}, so it's shown with built-in controls only."
+                : $"{owner.Info.Name} doesn't use a framework the designer knows, so {document.Title} is shown with built-in controls only.");
+        }
+
         Attach(document);
         Documents.Add(document);
         SelectedDocument = document;
@@ -135,6 +165,24 @@ public sealed partial class ShellViewModel : ObservableObject
         }
 
         await document.CloseAsync();
+        StopUnusedHostsSoon();
+    }
+
+    /// <summary>
+    /// After a document closed or another solution opened: renderers no open document uses are stopped, a few seconds
+    /// later (reopening the file at once reuses its renderer; review M17).
+    /// </summary>
+    private async void StopUnusedHostsSoon()
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5));
+            await _hosts.StopUnusedAsync(Documents.Select(d => d.HostKey).ToList());
+        }
+        catch (ObjectDisposedException)
+        {
+            // The designer is closing.
+        }
     }
 
     [RelayCommand]

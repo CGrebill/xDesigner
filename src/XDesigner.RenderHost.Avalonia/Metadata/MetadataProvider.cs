@@ -53,10 +53,18 @@ internal sealed class MetadataProvider
         {
             foreach (var type in Hosting.UserAssemblyLoader.SafeGetTypes(assembly))
             {
-                if (type.IsPublic && !type.IsGenericTypeDefinition && typeof(Control).IsAssignableFrom(type))
+                if (type.IsPublic && !type.IsGenericTypeDefinition && typeof(Control).IsAssignableFrom(type) && types.TryAdd(type.FullName ?? type.Name, type))
                 {
-                    result.Add(Describe(type, avaloniaNamespaces));
-                    types.TryAdd(type.FullName ?? type.Name, type);
+                    try
+                    {
+                        result.Add(Describe(type, avaloniaNamespaces));
+                    }
+                    catch (Exception ex) when (ex is TypeLoadException or FileNotFoundException or FileLoadException or MissingMemberException or BadImageFormatException)
+                    {
+                        // A member refers to an assembly that isn't there: leave this one type out, not the whole catalog (review L30).
+                        types.Remove(type.FullName ?? type.Name);
+                        Console.Error.WriteLine($"Skipped {type.FullName} in the toolbox: {ex.Message}");
+                    }
                 }
             }
         }

@@ -39,14 +39,14 @@ public sealed partial class ShellViewModel
             return;
         }
 
-        _runBusy = true;
+        SetBusy(ref _runBusy, true);
         try
         {
             await RunCoreAsync(project);
         }
         finally
         {
-            _runBusy = false;
+            SetBusy(ref _runBusy, false);
         }
     }
 
@@ -91,7 +91,7 @@ public sealed partial class ShellViewModel
             if (!_stopRequested && code != 0)
             {
                 RaiseNotify(NotifyKind.Warning, $"{project.Name} exited with code {code}. Its output is in Output ▸ Run.",
-                    [new NotifyAction("Show output", () => ShowRunOutput?.Invoke())]);
+                    [new NotifyAction("Show run output", () => ShowRunOutput?.Invoke())]);
             }
         });
         RaiseNotify(NotifyKind.Success, $"{project.Name} is running. Stop it with Shift+F5 or the Stop button.");
@@ -156,7 +156,12 @@ public sealed partial class ShellViewModel
             return "Open a project first.";
         }
 
-        var profile = ProjectProfile;
+        // A library, test or WPF project would get files of a framework it doesn't use (review M5).
+        if (ProjectProfile is not { } profile)
+        {
+            return $"{project.Name} doesn't use a UI framework the designer knows, so the designer can't add items to it. Set a designable project as the startup project first (Solution Explorer).";
+        }
+
         string xamlPath;
         try
         {
@@ -169,9 +174,13 @@ public sealed partial class ShellViewModel
 
         AppendLog($"Created {Path.GetRelativePath(project.Directory, xamlPath)} and its code-behind.");
         RefreshProjectFiles();
+        if (Solution is { } solution && solution.Find(project.ProjectPath) is not null)
+        {
+            Solution = solution.With(SolutionModel.Describe(project)); // Solution Explorer lists the new file (review L17)
+        }
         await OpenFileAsync(xamlPath);
-        var winui = profile?.Family == Core.Frameworks.FrameworkFamily.WinUI;
-        var maui = profile?.Family == Core.Frameworks.FrameworkFamily.Maui;
+        var winui = profile.Family == Core.Frameworks.FrameworkFamily.WinUI;
+        var maui = profile.Family == Core.Frameworks.FrameworkFamily.Maui;
         RaiseNotify(NotifyKind.Success, kind switch
             {
                 ItemKind.UserControl => $"Created {className}. Rebuild to use it as a control in your other {(maui ? "pages" : "windows")} (it will appear under Project in the toolbox).",

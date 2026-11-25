@@ -17,7 +17,7 @@ public interface IRenderHost
     /// <summary>Renders one document. The host keeps the latest render of each <see cref="RenderRequest.DocumentId"/> alive.</summary>
     Task<RenderResult> RenderAsync(RenderRequest request, CancellationToken cancellationToken);
 
-    /// <summary>Every public control type the host can see (Avalonia, packages, the user project); for the toolbox and drop rules.</summary>
+    /// <summary>Every public control type the host can see (the framework's, packages', the user project's); for the toolbox and drop rules.</summary>
     Task<ControlTypeInfo[]> GetControlTypesAsync(CancellationToken cancellationToken);
 
     /// <summary>Properties of a control type (by full name) that XAML can set, including common attached ones.</summary>

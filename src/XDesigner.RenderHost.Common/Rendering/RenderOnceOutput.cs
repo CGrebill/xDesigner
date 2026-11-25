@@ -28,7 +28,7 @@ public static class RenderOnceOutput
 
         if (FramePng.TrySave(result, pngPath) is { } saveError)
         {
-            Console.Error.WriteLine($"Could not save PNG: {saveError}");
+            Console.Error.WriteLine($"Couldn't save PNG: {saveError}");
             return RenderHostExitCodes.RenderFailed;
         }
 

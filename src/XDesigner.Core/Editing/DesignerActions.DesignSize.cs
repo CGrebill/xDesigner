@@ -30,18 +30,19 @@ public sealed partial class DesignerActions
         else
         {
             var element = root.Element;
-            var d = _document.Profile.DesignNamespace;
+            // The d: URI the file already uses (Blend's or MAUI's), and never a prefix bound to something else (H2).
+            var d = _document.DesignNamespace;
             var designPrefix = element.PrefixOf(d);
             if (designPrefix is null)
             {
-                designPrefix = "d";
+                designPrefix = element.FreePrefix("d");
                 commands.Add(new SetAttributeCommand(root.Id, XNamespace.Xmlns + designPrefix, d.NamespaceName));
             }
 
             var mcPrefix = element.PrefixOf(XamlNamespaces.MarkupCompatibility);
             if (mcPrefix is null)
             {
-                mcPrefix = "mc";
+                mcPrefix = element.FreePrefix("mc");
                 commands.Add(new SetAttributeCommand(root.Id, XNamespace.Xmlns + mcPrefix, XamlNamespaces.MarkupCompatibility));
             }
 

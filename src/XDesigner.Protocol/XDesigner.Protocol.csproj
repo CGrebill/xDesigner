@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>XDesigner.Protocol</RootNamespace>
-    <Description>RPC contracts and DTOs shared by the designer app and the Avalonia render host. References neither Avalonia nor WinUI.</Description>
+    <Description>RPC contracts and DTOs shared by the designer app and its render hosts. References no UI framework.</Description>
   </PropertyGroup>
 
   <ItemGroup>

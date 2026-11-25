@@ -22,8 +22,22 @@ internal sealed class XamlTypeResolver
     private readonly ConcurrentDictionary<(string Ns, string Name), Type?> _cache = new();
     private readonly Lazy<Dictionary<string, Type>> _presentation = new(BuildPresentationMap);
 
-    public Type? Resolve(string xmlNamespace, string localName) =>
-        _cache.GetOrAdd((xmlNamespace, localName), key => ResolveCore(key.Ns, key.Name));
+    /// <summary>Found types are kept; a miss is looked up again next time, as the library may have loaded since (review M24).</summary>
+    public Type? Resolve(string xmlNamespace, string localName)
+    {
+        if (_cache.TryGetValue((xmlNamespace, localName), out var cached))
+        {
+            return cached;
+        }
+
+        var type = ResolveCore(xmlNamespace, localName);
+        if (type is not null)
+        {
+            _cache[(xmlNamespace, localName)] = type;
+        }
+
+        return type;
+    }
 
     private Type? ResolveCore(string xmlNamespace, string localName)
     {
@@ -32,17 +46,9 @@ internal sealed class XamlTypeResolver
             return _presentation.Value.GetValueOrDefault(localName);
         }
 
-        if (xmlNamespace.StartsWith("using:", StringComparison.Ordinal))
-        {
-            return FindInAllAssemblies(xmlNamespace["using:".Length..], localName);
-        }
-
-        if (xmlNamespace.StartsWith("clr-namespace:", StringComparison.Ordinal))
-        {
-            return FindInAllAssemblies(xmlNamespace["clr-namespace:".Length..].Split(';')[0], localName);
-        }
-
-        return null;
+        return xmlNamespace.StartsWith("using:", StringComparison.Ordinal)
+            ? FindInAllAssemblies(xmlNamespace["using:".Length..], localName)
+            : null; // WinUI XAML names CLR namespaces with using: only
     }
 
     private static Type? FindInAllAssemblies(string clrNamespace, string localName)

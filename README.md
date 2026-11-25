@@ -32,9 +32,9 @@ handler, and press Run. You write only C#; xDesigner writes the XAML.
   control while you design.
 - **Editors** for ListBox, ComboBox, TabControl, Menu and TreeView items, and for Grid rows and columns.
 - **Preview** in Light or Dark theme, at common window sizes or your own, at any zoom.
-- **Projects**: create a new Avalonia app, add windows and user controls, build, run and stop it from the designer.
-  Images you pick are copied into the project's `Assets` folder.
-- **Lossless editing**: xDesigner changes only the parts of a `.axaml` file you edit; everything else, including
+- **Projects**: create a new Avalonia, WinUI 3 or .NET MAUI app, add windows, pages and user controls, build, run and
+  stop it from the designer. Images you pick are copied into the project's images folder (`Assets`; MAUI `ResourcesImages`).
+- **Lossless editing**: xDesigner changes only the parts of a XAML file you edit; everything else, including
   formatting and comments, stays byte for byte as it was. Undo restores the file exactly.
 
 ## Install
@@ -44,7 +44,7 @@ handler, and press Run. You write only C#; xDesigner writes the XAML.
 2. Run it. It installs for your user account only, so no administrator rights are needed.
 
 Windows SmartScreen may warn that the installer is from an unknown publisher, because it isn't code-signed. Choose
-**More info › Run anyway** if you trust the download (the release page lists its SHA-256 checksum).
+**More info ▸ Run anyway** if you trust the download (the release page lists its SHA-256 checksum).
 
 **Requirements**
 - Windows 10 version 2004 or later, or Windows 11, x64. Windows on ARM runs it through emulation.
@@ -52,12 +52,12 @@ Windows SmartScreen may warn that the installer is from an unknown publisher, be
   .NET MAUI projects its Windows workload (`dotnet workload install maui-windows`, in an administrator terminal).
   Opening and editing files works without them.
 
-**Uninstall** from *Settings › Apps*. The uninstaller removes the program, its shortcuts, and everything xDesigner
+**Uninstall** from *Settings ▸ Apps*. The uninstaller removes the program, its shortcuts, and everything xDesigner
 stored for itself (`%LOCALAPPDATA%\xDesigner`: settings and the error log). Your projects are never touched.
 
 ## Quick start
 
-1. **File › New project…** (Ctrl+Shift+N): pick Avalonia 12 or 11, a name and a folder. xDesigner creates the app,
+1. **File ▸ New project…** (Ctrl+Shift+N): pick a framework (Avalonia 12 or 11, WinUI 3, .NET MAUI 11 or 10), a name and a folder. xDesigner creates the app,
    builds it and opens its main window.
 2. Drag a **Button** and a **TextBlock** from the toolbox onto the window.
 3. Double-click the button. xDesigner adds `button1_Click` to `MainWindow.axaml.cs` and offers to open it in your
@@ -80,6 +80,7 @@ The [user guide](docs/user-guide.md) covers everything else.
 | Ctrl+mouse wheel, Ctrl+= / Ctrl+- / Ctrl+0 / Ctrl+9 | Zoom / in / out / 100% / fit |
 | F4 | Go to the Properties window |
 | F5 / Shift+F5 / Ctrl+Shift+B | Run / stop / rebuild the project |
+| Ctrl+Alt+L | Solution Explorer |
 | Ctrl+, | Settings |
 
 ## What xDesigner doesn't do

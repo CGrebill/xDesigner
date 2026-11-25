@@ -15,6 +15,7 @@ namespace XDesigner.App.Controls;
 public sealed partial class SolutionExplorer : UserControl
 {
     private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _collapsed = new(StringComparer.OrdinalIgnoreCase);
     private ShellViewModel? _shell;
 
     public SolutionExplorer()
@@ -44,7 +45,7 @@ public sealed partial class SolutionExplorer : UserControl
     public void Rebuild()
     {
         var solution = _shell?.Solution;
-        Tree.ItemsSource = solution is null ? null : SolutionNodeViewModel.Build(solution, _shell?.Project?.ProjectPath, _expanded);
+        Tree.ItemsSource = solution is null ? null : SolutionNodeViewModel.Build(solution, _shell?.Project?.ProjectPath, _expanded, _collapsed);
         EmptyText.Visibility = solution is null ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -53,6 +54,7 @@ public sealed partial class SolutionExplorer : UserControl
         if (args.Item is SolutionNodeViewModel node)
         {
             _expanded.Add(node.Path);
+            _collapsed.Remove(node.Path);
         }
     }
 
@@ -61,6 +63,7 @@ public sealed partial class SolutionExplorer : UserControl
         if (args.Item is SolutionNodeViewModel node)
         {
             _expanded.Remove(node.Path);
+            _collapsed.Add(node.Path);
         }
     }
 
@@ -104,9 +107,14 @@ public sealed partial class SolutionExplorer : UserControl
         }
     }
 
-    private void Tree_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    /// <summary>Moves keyboard focus into the tree (View ▸ Solution Explorer, review L51).</summary>
+    public void FocusTree() => Tree.Focus(FocusState.Programmatic);
+
+    // ContextRequested, not RightTapped: also Shift+F10 and the Menu key (review L51).
+    private void Tree_ContextRequested(UIElement sender, ContextRequestedEventArgs e)
     {
-        if ((e.OriginalSource as FrameworkElement)?.DataContext is not SolutionNodeViewModel node || _shell is not { } shell)
+        var target = e.OriginalSource as FrameworkElement;
+        if ((target?.DataContext as SolutionNodeViewModel ?? Tree.SelectedItem as SolutionNodeViewModel) is not { } node || _shell is not { } shell)
         {
             return;
         }
@@ -122,7 +130,7 @@ public sealed partial class SolutionExplorer : UserControl
         switch (node.Kind)
         {
             case SolutionNodeKind.Project when node.Project is { } project:
-                Add("Set as startup project", "", () => shell.SetStartupProject(project), enabled: !node.IsStartup);
+                Add("Set as startup project", "", () => shell.SetStartupProject(project), enabled: !node.IsStartup && project.IsDesignable); // Add and Run act on it (review M5)
                 Add("Open project file in code editor", "", () => OpenInCodeEditor(node));
                 Add("Show in File Explorer", "", () => Reveal(project.Info.Directory, select: false));
                 if (project.Framework.Problem(project.Info.Name) is { } problem)
@@ -146,7 +154,16 @@ public sealed partial class SolutionExplorer : UserControl
                 break;
         }
 
-        menu.ShowAt(e.OriginalSource as FrameworkElement, e.GetPosition(e.OriginalSource as UIElement));
+        var anchor = target ?? Tree;
+        if (e.TryGetPosition(anchor, out var point))
+        {
+            menu.ShowAt(anchor, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions { Position = point });
+        }
+        else
+        {
+            menu.ShowAt(anchor); // from the keyboard: at the row
+        }
+
         e.Handled = true;
     }
 

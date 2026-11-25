@@ -98,7 +98,10 @@ public sealed class InsertElementCommand(int containerId, XElement element, int 
     {
         var parent = document.FindById(containerId)?.Element
             ?? throw new InvalidOperationException($"Element #{containerId} is no longer in the document.");
-        var container = intoPropertyElement is { } name ? parent.Element(name) ?? parent : parent;
+        // The index counts children inside a content property element (ElementNode.Children), so insert in there.
+        var container = intoPropertyElement is { } name ? parent.Element(name) ?? parent
+            : RenderCopyBuilder.IsObjectElement(Element) ? ElementNode.ContentHolder(parent) ?? parent
+            : parent; // a property element (<Grid.RowDefinitions>) goes on the element itself
         _added = XamlFormatting.InsertChild(container, Element, index);
     }
 
@@ -165,12 +168,44 @@ public sealed class RemoveElementCommand : IUndoableCommand
         if (_parent.Nodes().All(n => n is XText t && string.IsNullOrWhiteSpace(t.Value)))
         {
             _parent.RemoveNodes();
+
+            // An emptied single-value property element (<Border.Child>, <ContentPage.Content>) goes as well: it would
+            // set the property to nothing (review L2).
+            if (_propertyElement is null && _parent is XElement { Parent: { } grand } holder && IsSingleValueHolder(holder))
+            {
+                _grand = grand;
+                _grandNodesBefore = grand.Nodes().ToList();
+                if (holder.PreviousNode is XText { Value: var space } before && string.IsNullOrWhiteSpace(space))
+                {
+                    before.Remove();
+                }
+
+                holder.Remove();
+                if (grand.Nodes().All(n => n is XText t && string.IsNullOrWhiteSpace(t.Value)))
+                {
+                    grand.RemoveNodes();
+                }
+            }
         }
     }
+
+    private XElement? _grand;
+    private List<XNode> _grandNodesBefore = [];
+
+    private static bool IsSingleValueHolder(XElement element) =>
+        element.Name.LocalName.Contains('.')
+        && (element.Name.LocalName.EndsWith(".Content", StringComparison.Ordinal) || element.Name.LocalName.EndsWith(".Child", StringComparison.Ordinal));
 
     /// <summary>Puts back exactly the parent's original nodes (same instances, same order).</summary>
     public void Undo(XamlDocument document)
     {
+        if (_grand is { } grand)
+        {
+            grand.RemoveNodes();
+            grand.Add(_grandNodesBefore);
+            _grand = null;
+        }
+
         _parent!.RemoveNodes();
         _parent.Add(_parentNodesBefore);
     }

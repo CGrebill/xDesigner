@@ -62,12 +62,30 @@ public sealed class ShadowHostFolderTests : IDisposable
         var leftOver = Path.Combine(Root, "leftover-from-a-crash");
         Directory.CreateDirectory(leftOver);
         File.WriteAllText(Path.Combine(leftOver, "file.txt"), "x");
+        Directory.SetCreationTimeUtc(leftOver, DateTime.UtcNow.AddMinutes(-5));
+        var beingCreated = Directory.CreateDirectory(Path.Combine(Root, "another-designer-starting")).FullName; // no lock file yet
 
         using var next = ShadowHostFolder.Prepare(Path.Combine(_temp, "host"), Path.Combine(_temp, "user"), Root);
 
         Assert.False(Directory.Exists(leftOver));
+        Assert.True(Directory.Exists(beingCreated)); // review L26
         Assert.True(File.Exists(Path.Combine(inUse.Path, "Host.exe")));
         Assert.NotEqual(inUse.Path, next.Path);
+    }
+
+    /// <summary>A packaged build's layout copy isn't copied again (review L34); its resources.pri is the MAUI host's index (review M30).</summary>
+    [Fact]
+    public void PackagedOutput_SkipsTheLayoutCopy_AndUsesResourcesPri()
+    {
+        Write("user/AppX/App.dll", "layout copy");
+        Write("user/resources.pri", "project index");
+        Write("host/Host.pri", "host index");
+
+        using var shadow = ShadowHostFolder.Prepare(Path.Combine(_temp, "host"), Path.Combine(_temp, "user"), Root, ("App", "Host"));
+
+        Assert.False(Directory.Exists(Path.Combine(shadow.Path, "AppX")));
+        Assert.Equal("project index", Read(shadow, "Host.pri"));
+        Assert.Equal("host index", File.ReadAllText(Path.Combine(_temp, "host", "Host.pri"))); // the installed file is untouched
     }
 
     public void Dispose()

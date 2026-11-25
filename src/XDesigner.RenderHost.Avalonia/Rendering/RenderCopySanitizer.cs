@@ -68,10 +68,8 @@ internal sealed class RenderCopySanitizer(XamlTypeResolver resolver)
             }
         }
 
-        // Lines before the root (a declaration, a license comment) become empty lines, so error lines still match.
-        var root = document.Root!;
-        var line = root is System.Xml.IXmlLineInfo info && info.HasLineInfo() ? info.LineNumber : 1;
-        return new string('\n', Math.Max(0, line - 1)) + root.ToString(SaveOptions.DisableFormatting);
+        // Every element and attribute stays on its line, so error lines match the file (§8.5).
+        return XDesigner.Protocol.Rendering.LineKeepingXml.Write(document.Root!);
     }
 
     /// <summary>

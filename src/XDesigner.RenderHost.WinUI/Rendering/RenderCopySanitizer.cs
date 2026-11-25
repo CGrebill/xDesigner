@@ -23,7 +23,7 @@ internal sealed record SanitizedXaml(string Xaml, bool IsWindow, string? WindowT
 /// <item>design ids move to the host's own namespace, and off elements that aren't DependencyObjects.</item>
 /// </list>
 /// </summary>
-internal sealed class RenderCopySanitizer(XamlTypeResolver resolver)
+internal sealed class RenderCopySanitizer(XamlTypeResolver resolver, ProjectResources? resources = null)
 {
     private static readonly XNamespace XamlNs = "http://schemas.microsoft.com/winfx/2006/xaml";
     private static readonly XNamespace MarkupCompatibilityNs = "http://schemas.openxmlformats.org/markup-compatibility/2006";
@@ -37,7 +37,7 @@ internal sealed class RenderCopySanitizer(XamlTypeResolver resolver)
         XDocument document;
         try
         {
-            // PreserveWhitespace + DisableFormatting keep line numbers identical, so loader errors still point at the right line.
+            // Line info, so the copy can be written back with every element on its line (LineKeepingXml, §8.5).
             document = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
         }
         catch (System.Xml.XmlException)
@@ -59,12 +59,18 @@ internal sealed class RenderCopySanitizer(XamlTypeResolver resolver)
             && typeof(Window).IsAssignableFrom(rootType))
         {
             isWindow = true;
-            title = root.Attribute("Title")?.Value;
+            // A bound title ({x:Bind …}) has no text to show (review L39).
+            title = root.Attribute("Title")?.Value is { } t && !t.TrimStart().StartsWith('{') ? t : null;
             ReplaceWindowRoot(root);
         }
 
         foreach (var element in document.Descendants().ToList())
         {
+            if (resources is not null)
+            {
+                ApplyProjectResources(element, resources);
+            }
+
             foreach (var directive in CompiledOnlyDirectives)
             {
                 element.Attribute(XamlNs + directive)?.Remove();
@@ -103,9 +109,8 @@ internal sealed class RenderCopySanitizer(XamlTypeResolver resolver)
             }
         }
 
-        // Lines before the root (a declaration, a license comment) become empty lines, so error lines still match.
-        var line = root is System.Xml.IXmlLineInfo info && info.HasLineInfo() ? info.LineNumber : 1;
-        return new SanitizedXaml(new string('\n', Math.Max(0, line - 1)) + root.ToString(SaveOptions.DisableFormatting), isWindow, title, designWidth, designHeight);
+        // Every element and attribute stays on its line, so error lines match the file (§8.5).
+        return new SanitizedXaml(XDesigner.Protocol.Rendering.LineKeepingXml.Write(root), isWindow, title, designWidth, designHeight);
     }
 
     /// <summary>
@@ -122,10 +127,45 @@ internal sealed class RenderCopySanitizer(XamlTypeResolver resolver)
 
         foreach (var propertyElement in root.Elements().Where(e => e.Name.LocalName.StartsWith(root.Name.LocalName + ".", StringComparison.Ordinal)).ToList())
         {
-            propertyElement.Remove();
+            // <Window.Content> is the client area's content: it stays, unwrapped into the Grid (review L39).
+            if (propertyElement.Name.LocalName == root.Name.LocalName + ".Content")
+            {
+                propertyElement.ReplaceWith(propertyElement.Nodes());
+            }
+            else
+            {
+                propertyElement.Remove();
+            }
         }
 
         root.Name = PresentationNs + "Grid";
+    }
+
+    /// <summary>
+    /// What the project's resource index would do (review M27): <c>x:Uid</c> strings become the attributes they set (an
+    /// attribute written in the XAML stays), and <c>ms-appx:///</c> images point at a scale-qualified file when that's all there is.
+    /// </summary>
+    private static void ApplyProjectResources(XElement element, ProjectResources resources)
+    {
+        if (element.Attribute(XamlNs + "Uid") is { } uid)
+        {
+            var prefix = uid.Value + ".";
+            foreach (var (key, text) in resources.Strings.Where(s => s.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            {
+                var property = key[prefix.Length..];
+                if (property.Length > 0 && !property.Contains('.') && !property.Contains('[') && element.Attribute(property) is null)
+                {
+                    element.SetAttributeValue(property, text);
+                }
+            }
+
+            uid.Remove(); // no lookups in the host's own index
+        }
+
+        foreach (var attribute in element.Attributes().Where(a => a.Value.StartsWith("ms-appx:///", StringComparison.OrdinalIgnoreCase)))
+        {
+            attribute.Value = resources.ResolveAppxUri(attribute.Value);
+        }
     }
 
     private static HashSet<XNamespace> IgnorableNamespaces(XElement root)

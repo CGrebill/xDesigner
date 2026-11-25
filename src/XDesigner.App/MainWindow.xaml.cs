@@ -132,8 +132,11 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>Opens the selected error's file: XAML in the designer, anything else in the code editor at the line.</summary>
-    private void GoToDiagnostic()
+    /// <summary>
+    /// Opens the selected error's file: XAML in the designer with the element at the line selected (review L56), anything
+    /// else in the code editor at the line.
+    /// </summary>
+    private async void GoToDiagnostic()
     {
         if (ErrorsList.SelectedItem is not ViewModels.DiagnosticRow { Diagnostic.File: { } file } row || !File.Exists(file))
         {
@@ -142,7 +145,10 @@ public sealed partial class MainWindow : Window
 
         if (file.EndsWith(".axaml", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
         {
-            _ = ViewModel.OpenFileAsync(file);
+            if (await ViewModel.OpenFileAsync(file) is { } document && row.Diagnostic.Line is { } line)
+            {
+                document.SelectAtLine(line);
+            }
         }
         else if (ViewModel.CodeEditor.Open(file, row.Diagnostic.Line ?? 1) is { } problem)
         {

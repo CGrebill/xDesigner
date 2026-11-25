@@ -108,7 +108,27 @@ internal sealed class XamlTextWriter
             WriteNode(child);
         }
 
-        _out.Append("</").Append(QualifiedName(element, element.Name)).Append('>');
+        _out.Append("</").Append(TagName(element)).Append('>');
+    }
+
+    /// <summary>
+    /// The element's name as its tags write it: as in its original start tag while that still names this element (a file
+    /// may bind one namespace to two prefixes, and the end tag must match the start tag), else <see cref="QualifiedName"/>.
+    /// </summary>
+    private static string TagName(XElement element)
+    {
+        if (element.Annotation<OriginalStartTag>() is { } original)
+        {
+            var written = original.NameText[1..];
+            var colon = written.IndexOf(':', StringComparison.Ordinal);
+            var ns = colon < 0 ? element.DefaultNamespaceOf() : element.NamespaceOf(written[..colon]);
+            if (ns == element.Name.Namespace && written[(colon + 1)..] == element.Name.LocalName)
+            {
+                return written;
+            }
+        }
+
+        return QualifiedName(element, element.Name);
     }
 
     /// <summary>Whether the start tag just written ended with <c>/&gt;</c>.</summary>
@@ -144,8 +164,7 @@ internal sealed class XamlTextWriter
     private static string RebuildStartTag(XElement element, OriginalStartTag original, bool hasContent)
     {
         var sb = new StringBuilder();
-        var expectedName = "<" + QualifiedName(element, element.Name);
-        sb.Append(original.NameText == expectedName ? original.NameText : expectedName);
+        sb.Append('<').Append(TagName(element));
 
         var originalByName = original.Attributes.ToDictionary(a => a.Name);
         var lastLeading = original.Attributes.LastOrDefault()?.Leading;
@@ -199,12 +218,13 @@ internal sealed class XamlTextWriter
             return name.LocalName;
         }
 
-        var prefix = element.PrefixOf(name.Namespace);
-        if (prefix is null && element.DefaultNamespaceOf() == name.Namespace)
+        // The default namespace when it is this one (a file may also bind it to a prefix), else its prefix.
+        if (element.DefaultNamespaceOf() == name.Namespace)
         {
             return name.LocalName;
         }
 
+        var prefix = element.PrefixOf(name.Namespace);
         return prefix is null ? name.LocalName : $"{prefix}:{name.LocalName}";
     }
 

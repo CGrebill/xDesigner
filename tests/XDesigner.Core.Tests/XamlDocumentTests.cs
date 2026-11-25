@@ -7,8 +7,8 @@ namespace XDesigner.Core.Tests;
 
 public class XamlDocumentTests
 {
-    private static readonly XNamespace Av = XamlNamespaces.Avalonia;
-    private static readonly XNamespace X = XamlNamespaces.Xaml;
+    private static readonly XNamespace Av = Frameworks.FrameworkProfile.AvaloniaNamespace;
+    private static readonly XNamespace X = Frameworks.FrameworkProfile.Xaml2006Namespace;
 
     private const string MultiLine =
         "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n" +
@@ -294,6 +294,34 @@ public class XamlDocumentTests
             XamlDocument.Load(path).Save(path);
 
             Assert.Equal(original, File.ReadAllBytes(path));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    /// <summary>A file without a BOM is read in the encoding its declaration names; undeclared non-UTF-8 is refused (review L5).</summary>
+    [Fact]
+    public void Load_HonoursTheDeclaredEncoding_AndRefusesUndeclaredNonUtf8()
+    {
+        var dir = Directory.CreateTempSubdirectory("xdesigner-doc-");
+        try
+        {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            var latin = Encoding.GetEncoding(1252);
+            var declared = Path.Combine(dir.FullName, "a.axaml");
+            File.WriteAllBytes(declared, latin.GetBytes("<?xml version=\"1.0\" encoding=\"windows-1252\"?>\n<UserControl xmlns=\"https://github.com/avaloniaui\"><TextBlock Text=\"Café\" /></UserControl>\n"));
+            var original = File.ReadAllBytes(declared);
+
+            var doc = XamlDocument.Load(declared);
+            Assert.Contains("Café", doc.ToXaml(), StringComparison.Ordinal);
+            doc.Save(declared);
+            Assert.Equal(original, File.ReadAllBytes(declared));
+
+            var undeclared = Path.Combine(dir.FullName, "b.axaml");
+            File.WriteAllBytes(undeclared, latin.GetBytes("<UserControl xmlns=\"https://github.com/avaloniaui\"><TextBlock Text=\"Café\" /></UserControl>"));
+            Assert.Throws<IOException>(() => XamlDocument.Load(undeclared));
         }
         finally
         {

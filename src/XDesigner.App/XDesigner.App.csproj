@@ -20,7 +20,7 @@
     <!-- Generates and publishes the app's own resources (xDesigner.pri with the compiled XAML) for an unpackaged app. -->
     <EnableMsixTooling>true</EnableMsixTooling>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <Description>xDesigner: a visual designer for Avalonia UI and WinUI 3 (WinUI 3 shell).</Description>
+    <Description>xDesigner: a visual designer for Avalonia UI, WinUI 3 and .NET MAUI (WinUI 3 shell).</Description>
   </PropertyGroup>
 
   <!-- Release publish: self-contained (no .NET install needed) and precompiled for a faster start. -->
@@ -87,7 +87,12 @@
     </PropertyGroup>
     <ItemGroup>
       <_RenderHostFiles Include="$(_RenderHostOutDir)**\*" />
+      <!-- Files a newer build replaces. WinUI and MAUI shadow folders hard-link these, and copying over a file writes
+           through the link into a running renderer's folder: delete first, so the link breaks instead (review L53). -->
+      <_RenderHostReplaced Include="@(_RenderHostFiles)"
+                           Condition="Exists('$(OutDir)renderhosts\$(_RenderHostFolder)\%(RecursiveDir)%(Filename)%(Extension)') And $([System.IO.File]::GetLastWriteTimeUtc('%(FullPath)').Ticks) &gt; $([System.IO.File]::GetLastWriteTimeUtc('$(OutDir)renderhosts\$(_RenderHostFolder)\%(RecursiveDir)%(Filename)%(Extension)').Ticks)" />
     </ItemGroup>
+    <Delete Files="@(_RenderHostReplaced->'$(OutDir)renderhosts\$(_RenderHostFolder)\%(RecursiveDir)%(Filename)%(Extension)')" ContinueOnError="true" />
     <Copy SourceFiles="@(_RenderHostFiles)"
           DestinationFiles="@(_RenderHostFiles->'$(OutDir)renderhosts\$(_RenderHostFolder)\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />

@@ -32,7 +32,7 @@ public enum ContentModel
 /// Namespace to write the element in: <c>https://github.com/avaloniaui</c> for types mapped there by
 /// <c>XmlnsDefinition</c> (built-in controls and many packages), otherwise <c>using:{ClrNamespace}</c>.
 /// </param>
-/// <param name="IsBuiltIn">From Avalonia's own assemblies (<c>Avalonia</c>, <c>Avalonia.*</c>).</param>
+/// <param name="IsBuiltIn">From the framework's own assemblies (<c>Avalonia.*</c>, <c>Microsoft.UI.Xaml</c>, <c>Microsoft.Maui.*</c>).</param>
 /// <param name="IsCreatable">Public, non-abstract, non-generic, not nested, with a public parameterless constructor.</param>
 /// <param name="ContentPropertyName">The <c>[Content]</c> property, if any (<c>Content</c>, <c>Child</c>, <c>Children</c>, <c>Items</c>).</param>
 /// <param name="DefaultEventName">The event double-clicking the control creates a handler for (§10.1).</param>

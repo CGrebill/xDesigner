@@ -12,6 +12,9 @@ public static class ProtocolInfo
     /// </summary>
     public const int Version = 6;
 
+    /// <summary>The exit code of a render host whose framework or project App failed to set up: the designer retries with <c>--no-user-app</c>.</summary>
+    public const int SetupFailedExitCode = 3;
+
     /// <summary>Prefix for the named pipe the render host listens on.</summary>
     public const string PipeNamePrefix = "xDesigner-";
 

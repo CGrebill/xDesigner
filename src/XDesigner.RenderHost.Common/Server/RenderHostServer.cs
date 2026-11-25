@@ -11,7 +11,7 @@ public static class RenderHostExitCodes
     public const int BadArguments = 1;
 
     /// <summary>Framework or user app setup failed; the app retries with <c>--no-user-app</c>.</summary>
-    public const int SetupFailed = 3;
+    public const int SetupFailed = ProtocolInfo.SetupFailedExitCode;
 
     public const int RenderFailed = 4;
 }
@@ -30,10 +30,7 @@ public static class RenderHostServer
     public static async Task<int> RunAsync(RenderHostOptions options, IRenderHost service, Task shutdownRequested)
     {
         using var stop = new CancellationTokenSource();
-        if (options.ParentProcessId is { } parentPid)
-        {
-            WatchParent(parentPid, stop);
-        }
+        using var parent = options.ParentProcessId is { } parentPid ? WatchParent(parentPid, stop) : null;
 
         await using var pipe = new NamedPipeServerStream(
             options.PipeName!,
@@ -63,24 +60,48 @@ public static class RenderHostServer
         // Whichever happens first: client gone, client asked to stop, parent died.
         await Task.WhenAny(rpc.Completion, shutdownRequested, Task.Delay(Timeout.Infinite, stop.Token))
             .ContinueWith(_ => { }, TaskScheduler.Default);
+
+        // Asked to stop: let the reply reach the designer (it then closes the pipe) before the connection is disposed, or
+        // the designer sees the connection lost and kills the host instead of letting it exit (review L28).
+        if (shutdownRequested.IsCompleted && !rpc.Completion.IsCompleted)
+        {
+            await rpc.Completion.WaitAsync(TimeSpan.FromSeconds(2)).ContinueWith(_ => { }, TaskScheduler.Default);
+        }
+
         return RenderHostExitCodes.Ok;
     }
 
-    private static void WatchParent(int parentPid, CancellationTokenSource stop)
+    /// <summary>Cancels <paramref name="stop"/> when the designer exits; dispose the result when serving ends.</summary>
+    private static Process? WatchParent(int parentPid, CancellationTokenSource stop)
     {
+        void Stop()
+        {
+            try
+            {
+                stop.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Serving already ended (the designer exited while the host was shutting down): nothing to stop (review L28).
+            }
+        }
+
         try
         {
             var parent = Process.GetProcessById(parentPid);
             parent.EnableRaisingEvents = true;
-            parent.Exited += (_, _) => stop.Cancel();
+            parent.Exited += (_, _) => Stop();
             if (parent.HasExited)
             {
-                stop.Cancel();
+                Stop();
             }
+
+            return parent;
         }
         catch (ArgumentException)
         {
-            stop.Cancel(); // parent already gone
+            Stop(); // parent already gone
+            return null;
         }
     }
 

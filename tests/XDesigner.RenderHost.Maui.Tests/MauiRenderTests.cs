@@ -76,6 +76,115 @@ public class MauiRenderTests(MauiHostsFixture fixture)
         Assert.Equal("Microsoft.Maui.Controls.Label", Assert.Single(result.Root!.Children).TypeName);
     }
 
+    /// <summary>Non-visual elements MAUI resolves by suffix or arity (OnPlatform`1, StaticResourceExtension) render (review H4).</summary>
+    [Theory]
+    [InlineData(10)]
+    [InlineData(11)]
+    public async Task MarkupExtensionAndGenericElements_Render(int major)
+    {
+        var host = await fixture.HostAsync(major);
+        var xaml = """
+            <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                         WidthRequest="200" HeightRequest="100">
+              <ContentView.Resources>
+                <Color x:Key="c">Red</Color>
+              </ContentView.Resources>
+              <ContentView.Padding>
+                <OnPlatform x:TypeArguments="Thickness" Default="4">
+                  <On Platform="WinUI" Value="8" />
+                </OnPlatform>
+              </ContentView.Padding>
+              <Label x:Name="label" Text="Hi">
+                <Label.TextColor>
+                  <StaticResource Key="c" />
+                </Label.TextColor>
+                <Label.BackgroundColor>
+                  <DynamicResource Key="c" />
+                </Label.BackgroundColor>
+              </Label>
+            </ContentView>
+            """;
+
+        var result = await host.Host.RenderAsync(new RenderRequest(1, RenderCopyBuilder.Build(xaml)), Ct);
+
+        Assert.True(result.Success, result.Error?.Message);
+        Assert.Equal("Microsoft.Maui.Controls.Label", Assert.Single(result.Root!.Children).TypeName);
+    }
+
+    /// <summary>A hidden child takes no room in an Auto row (review L41); a style's value isn't reported as Local (review L42).</summary>
+    [Theory]
+    [InlineData(10)]
+    [InlineData(11)]
+    public async Task HiddenAutoRowChild_AndStyleValues(int major)
+    {
+        var host = await fixture.HostAsync(major);
+        var xaml = """
+            <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                         WidthRequest="200" HeightRequest="100">
+              <ContentView.Resources>
+                <Style TargetType="Label">
+                  <Setter Property="FontSize" Value="20" />
+                </Style>
+              </ContentView.Resources>
+              <Grid RowDefinitions="Auto,*">
+                <Label Text="Hidden" IsVisible="False" Margin="0,10" />
+                <Label Grid.Row="1" Text="Shown" TextColor="Red" />
+              </Grid>
+            </ContentView>
+            """;
+
+        var result = await host.Host.RenderAsync(new RenderRequest(1, RenderCopyBuilder.Build(xaml), DocumentId: "auto-style"), Ct);
+
+        Assert.True(result.Success, result.Error?.Message);
+        var grid = RenderXaml.All(result.Root!).Single(e => e.TypeName == "Microsoft.Maui.Controls.Grid");
+        Assert.Equal(0, grid.Panel!.RowOffsets![1], precision: 1); // the Auto row is empty
+        var values = (await host.Host.GetValuesAsync("auto-style", 6, Ct)).ToDictionary(v => v.Key); // the shown Label (ids count the Style and Setter too)
+        Assert.Equal(XDesigner.Protocol.Metadata.ValueSource.Style, values["FontSize"].Source);
+        Assert.Equal(XDesigner.Protocol.Metadata.ValueSource.Local, values["TextColor"].Source);
+    }
+
+    /// <summary>A Window document draws its page and reports the Window around it, as the WinUI renderer does.</summary>
+    [Fact]
+    public async Task WindowRoot_DrawsItsPage()
+    {
+        var host = await fixture.HostAsync(11);
+        var xaml = """
+            <Window xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" Title="Settings">
+              <ContentPage>
+                <Label Text="Inside" />
+              </ContentPage>
+            </Window>
+            """;
+
+        var result = await host.Host.RenderAsync(new RenderRequest(1, RenderCopyBuilder.Build(xaml), DesignSize: new SizeDto(300, 200)), Ct);
+
+        Assert.True(result.Success, result.Error?.Message);
+        Assert.Equal(RootKind.Window, result.RootKind);
+        Assert.Equal("Settings", result.WindowTitle);
+        Assert.Equal(1, result.Root!.DesignId);
+        Assert.Contains(RenderXaml.All(result.Root), e => e.TypeName == "Microsoft.Maui.Controls.Label");
+    }
+
+    /// <summary>MAUI's global namespace (MAUI 10+) is understood (review M15).</summary>
+    [Theory]
+    [InlineData(10)]
+    [InlineData(11)]
+    public async Task GlobalNamespace_Renders(int major)
+    {
+        var host = await fixture.HostAsync(major);
+        var xaml = """
+            <ContentView xmlns="http://schemas.microsoft.com/dotnet/maui/global" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                         WidthRequest="200" HeightRequest="100">
+              <Label Text="Global" />
+            </ContentView>
+            """;
+
+        var result = await host.Host.RenderAsync(new RenderRequest(1, RenderCopyBuilder.Build(xaml)), Ct);
+
+        Assert.True(result.Success, result.Error?.Message);
+        Assert.Equal("Microsoft.Maui.Controls.Label", Assert.Single(result.Root!.Children).TypeName);
+    }
+
     [Fact]
     public async Task XamlError_ReportsLineAndColumn()
     {

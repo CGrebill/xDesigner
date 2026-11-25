@@ -65,14 +65,16 @@ public sealed record ThicknessDto(double Left, double Top, double Right, double 
 /// <param name="Version">Monotonically increasing per document; older results are discarded by the app.</param>
 /// <param name="Xaml">
 /// The render copy of the document (design ids added, §5.4). The host itself removes <c>x:Class</c>,
-/// event attributes, and design ids on non-AvaloniaObject elements, since only it can resolve every type.
+/// event attributes, and design ids on elements that can't carry them (not an AvaloniaObject, DependencyObject or
+/// BindableObject), since only it can resolve every type.
 /// </param>
 /// <param name="Scale">Pixels per DIP: the screen's rasterization scale × zoom.</param>
 /// <param name="DesignSize">Preview size override in DIPs; null uses the document's own size.</param>
 /// <param name="DocumentId">Identifies the open document; the host keeps one live render per document.</param>
 /// <param name="BaseUri">
-/// Where the document lives inside the project assembly (<c>avares://App/Views/MainWindow.axaml</c>), so relative paths
-/// such as <c>/Assets/logo.png</c> resolve to the project's resources (§12). Null for a file without a project.
+/// Avalonia: where the document lives inside the project assembly (<c>avares://App/Views/MainWindow.axaml</c>), so relative
+/// paths such as <c>/Assets/logo.png</c> resolve to the project's resources (§12). Null for a file without a project, and
+/// unused by the WinUI and MAUI hosts (their resources resolve from the shadow folder, §14.5).
 /// </param>
 [MessagePackObject(keyAsPropertyName: true)]
 public sealed record RenderRequest(

@@ -7,11 +7,6 @@ namespace XDesigner.Core.Project;
 /// <summary>Small edits to a project file that keep everything else in it as written (§12).</summary>
 public static class ProjectFileEditor
 {
-    public const string AssetsInclude = @"Assets\**";
-
-    /// <summary>Makes sure an Avalonia project packages <c>Assets/</c> (<see cref="EnsureAssetsItem"/>).</summary>
-    public static bool EnsureAvaloniaResource(string projectPath) => EnsureAssetsItem(projectPath, FrameworkProfile.Avalonia12);
-
     /// <summary>
     /// The item that makes the project ship <c>Assets/</c>: <c>&lt;AvaloniaResource Include="Assets\**" /&gt;</c> (packaged into the
     /// assembly), or in WinUI a <c>Content</c> item copied next to the app. The WinUI one excludes files the project already

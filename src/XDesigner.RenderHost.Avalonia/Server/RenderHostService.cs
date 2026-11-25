@@ -25,7 +25,7 @@ internal sealed class RenderHostService(HostRuntime runtime) : IRenderHost
         Task.FromResult(new HostInfo(
             ProtocolInfo.Version,
             HostVersions.FrameworkId,
-            HostVersions.AvaloniaVersion.ToString(),
+            HostVersions.AvaloniaVersion.ToString(3), // 12.1.6, as the other renderers report their package versions
             runtime.ApplicationTypeName,
             runtime.BuilderSource,
             runtime.IsDesignMode,

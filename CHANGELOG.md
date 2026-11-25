@@ -2,7 +2,7 @@
 
 All notable changes to xDesigner are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.0.0] - 2026-11-25
 
 ### Added
 - **Avalonia 11.** Projects on Avalonia 11.1 or later can be designed, drawn by Avalonia 11 itself (a second renderer,
@@ -32,6 +32,40 @@ All notable changes to xDesigner are listed here. Versions follow [Semantic Vers
 - Render hosts live in `renderhosts\{framework}` next to the app (one per framework version) and share their
   framework-free code (`XDesigner.RenderHost.Common`); the render protocol is version 6.
 - xDesigner is built with the .NET 11 SDK (its MAUI 11 renderer needs it); building it also needs the MAUI workload.
+- New projects go to `Documents\xDesigner Projects` by default, with a name suggested for the chosen framework.
+- A solution remembers its startup project. A build can be cancelled (the Rebuild item reads Cancel build while one
+  runs, and closing the designer cancels it). Run, Rebuild and Add are disabled while they can't act.
+- Renderers no open file uses are stopped (after closing their files or opening another solution).
+- The MAUI renderers are about 55 MB smaller each (the Windows App SDK's AI and machine-learning parts are left out).
+
+### Fixed (from a full code review of 2.0)
+- Saving could write a malformed file: a declaration the designer added (`xmlns:x`, `xmlns:d`) could reuse a prefix the
+  file already used, and an end tag could get a different prefix from its start tag when a namespace had two.
+- A name typed in the Name box and refused could rename a control in the next document.
+- MAUI pages using `OnPlatform`, `OnIdiom`, `StaticResource` or `DynamicResource` elements didn't render; nor did files
+  in MAUI's global namespace.
+- Render errors pointed at the wrong line once a start tag spanned several lines.
+- Moving a MAUI control with proportional `AbsoluteLayout.LayoutFlags` threw it off the layout, and moving one out of an
+  AbsoluteLayout lost its size; pasting another framework's controls inserted XAML that couldn't render; WinUI tabs in
+  `<TabView.TabItems>` were missing from the outline; controls dropped into `<StackPanel.Children>` landed after it;
+  MAUI corner radii were written in the wrong order; Events listed no handlers to reuse in MAUI files.
+- When one project of a solution failed to build, no project's renderer got its new build; rebuilding a referenced
+  library didn't reload the app's controls; builds outside the designer were noticed for the startup project only.
+- Projects whose framework version is set in `Directory.Build.props` or central package management weren't recognised
+  before their first build; WPF windows were taken for WinUI ones; a MAUI project that also targets plain .NET was built
+  for it; a multi-targeted app couldn't be run.
+- The WinUI renderer stretched roots with MaxWidth or Margin, ignored App.xaml's RequestedTheme and some App.xaml
+  resource forms, showed `x:Uid` strings and scale-qualified images empty, dropped `<Window.Content>`, and ran the
+  bootstrapper of framework-dependent projects. Controls from libraries nothing had loaded yet could be missing.
+- The MAUI renderer kept the project's main page running unseen, could let a window the project opened later appear,
+  reported style values as set locally, and counted hidden controls in Auto rows.
+- A project App that hung while starting never got the default-theme fallback. Avalonia Grids with RowSpacing reported
+  a last row edge past the grid. A broken image slowed every render by 1.5 s.
+- Opening a solution during a build, or one with no readable project, left things half switched; Project ▸ Add could
+  create Avalonia files in a test or library project; an open file deleted on disk was recreated by Save; two designers
+  open lost each other's recent files; the same file opened twice quickly got two tabs.
+- New project accepted relative or invalid folders; Show build output did nothing with the Output pane hidden; Ctrl+X in
+  Solution Explorer cut controls from the form; Solution Explorer's menu didn't open from the keyboard.
 
 ### Fixed (from a full code review of 1.0.0)
 - A property value still being typed was applied to the wrong file when another file was opened or dropped on the
@@ -92,4 +126,5 @@ First public release.
 - Lossless XAML editing with exact undo.
 - Per-user installer and an uninstaller that removes all of xDesigner's files and settings.
 
+[2.0.0]: https://github.com/CGrebill/xDesigner/releases/tag/v2.0.0
 [1.0.0]: https://github.com/CGrebill/xDesigner/releases/tag/v1.0.0

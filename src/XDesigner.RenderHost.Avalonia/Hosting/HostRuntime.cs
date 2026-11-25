@@ -102,7 +102,7 @@ internal sealed class HostRuntime : IDisposable
         IsDesignMode = DesignModeSwitch.TryEnable();
         if (!IsDesignMode)
         {
-            _warnings.Add("Could not switch Avalonia into design mode; user controls will behave as at run time.");
+            _warnings.Add("Couldn't switch Avalonia into design mode; user controls will behave as at run time.");
         }
 
         UserAssemblyLoader? loader = null;

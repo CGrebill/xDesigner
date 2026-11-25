@@ -5,7 +5,7 @@ using System.Text;
 namespace XDesigner.Core.Rendering;
 
 /// <summary>
-/// The folder a WinUI render host runs from (§14.5): a copy of the user's build output with the host's files on top, so
+/// The folder a WinUI or MAUI render host runs from (§14.5, §14.6): a copy of the user's build output with the host's files on top, so
 /// the host's <c>ms-appx:///</c> URIs, compiled XAML (<c>.xbf</c>) and resources resolve to the user's, as in the user's app.
 /// Host files are hard-linked (no copying of ~150 MB; they never change while installed); the user's files are copied, so
 /// rebuilding the project never finds its output locked by the designer.
@@ -24,6 +24,12 @@ public sealed partial class ShadowHostFolder : IDisposable
     /// and the host's Application isn't the user's App class (the host reads App.xaml's resources from the project instead).
     /// </summary>
     public static readonly IReadOnlySet<string> SkippedUserFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "App.xbf" };
+
+    /// <summary>
+    /// Output folders left out: a packaged build's layout copy (<c>AppX</c>), publish output and app packages. The host
+    /// never reads them, and copying them made every start copy the output twice (review L34).
+    /// </summary>
+    public static readonly IReadOnlySet<string> SkippedUserFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "AppX", "publish", "AppPackages" };
 
     private readonly FileStream _lock;
 
@@ -66,7 +72,9 @@ public sealed partial class ShadowHostFolder : IDisposable
 
             foreach (var file in Directory.EnumerateFiles(userOutputDirectory, "*", SearchOption.AllDirectories))
             {
-                if (SkippedUserFiles.Contains(System.IO.Path.GetRelativePath(userOutputDirectory, file)))
+                var relative = System.IO.Path.GetRelativePath(userOutputDirectory, file);
+                var topFolder = relative.Contains(System.IO.Path.DirectorySeparatorChar) ? relative.Split(System.IO.Path.DirectorySeparatorChar)[0] : null;
+                if (SkippedUserFiles.Contains(relative) || (topFolder is not null && SkippedUserFolders.Contains(topFolder)))
                 {
                     continue;
                 }
@@ -78,11 +86,13 @@ public sealed partial class ShadowHostFolder : IDisposable
                 }
             }
 
-            if (resourceIndex is { } index && File.Exists(System.IO.Path.Combine(userOutputDirectory, index.ProjectName + ".pri")))
+            // {Project}.pri; a packaged build writes resources.pri instead (review M30).
+            if (resourceIndex is { } index
+                && new[] { index.ProjectName + ".pri", "resources.pri" }.Select(n => System.IO.Path.Combine(userOutputDirectory, n)).FirstOrDefault(File.Exists) is { } projectIndex)
             {
                 var hostIndex = System.IO.Path.Combine(path, index.HostName + ".pri");
                 File.Delete(hostIndex); // a hard link: replace the link, not the installed file
-                File.Copy(System.IO.Path.Combine(userOutputDirectory, index.ProjectName + ".pri"), hostIndex);
+                File.Copy(projectIndex, hostIndex);
             }
 
             return new ShadowHostFolder(path, lockFile);
@@ -112,6 +122,12 @@ public sealed partial class ShadowHostFolder : IDisposable
 
         foreach (var folder in Directory.EnumerateDirectories(root))
         {
+            // One being created right now has no lock file yet: leave folders younger than a minute (review L26).
+            if (DateTime.UtcNow - Directory.GetCreationTimeUtc(folder) < TimeSpan.FromMinutes(1))
+            {
+                continue;
+            }
+
             var lockFile = System.IO.Path.Combine(folder, LockFileName);
             try
             {

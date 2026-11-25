@@ -14,8 +14,8 @@ public sealed partial class MainWindow
     private void InitializeProject()
     {
         ViewModel.Notify += r => ShowNotification(r.Kind, r.Message, r.Actions, r.Sticky);
-        ViewModel.ShowBuildOutput += () => OutputTabs.SelectedItem = BuildTab;
-        ViewModel.ShowRunOutput += () => OutputTabs.SelectedItem = RunTab;
+        ViewModel.ShowBuildOutput += () => ShowOutputTab(BuildTab);
+        ViewModel.ShowRunOutput += () => ShowOutputTab(RunTab);
         ViewModel.RunLines.CollectionChanged += (_, _) =>
         {
             if (ViewModel.RunLines.Count > 0)
@@ -38,7 +38,8 @@ public sealed partial class MainWindow
 
     private void OnProjectPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(ShellViewModel.Project) or nameof(ShellViewModel.IsBuilding) or nameof(ShellViewModel.IsRunning))
+        if (e.PropertyName is nameof(ShellViewModel.Project) or nameof(ShellViewModel.IsBuilding) or nameof(ShellViewModel.IsRunning)
+            or nameof(ShellViewModel.IsBusy) or nameof(ShellViewModel.Solution))
         {
             UpdateProjectState();
         }
@@ -61,8 +62,9 @@ public sealed partial class MainWindow
     {
         var project = ViewModel.Project;
         var solution = ViewModel.Solution;
-        RebuildMenuItem.IsEnabled = project is not null && !ViewModel.IsBuilding;
-        RebuildMenuItem.Text = ViewModel.IsBuilding ? "Building…"
+        // While a build runs the item cancels it (review L23); while something else is busy it waits.
+        RebuildMenuItem.IsEnabled = project is not null && (ViewModel.IsBuilding || !ViewModel.IsBusy);
+        RebuildMenuItem.Text = ViewModel.IsBuilding ? "Cancel build"
             : solution is { SolutionPath: not null } ? $"Rebuild solution {solution.Name}"
             : project is null ? "Rebuild" : $"Rebuild {project.Name}";
         CloseProjectMenuItem.IsEnabled = project is not null;
@@ -120,6 +122,12 @@ public sealed partial class MainWindow
 
     private async void Rebuild_Click(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.IsBuilding)
+        {
+            ViewModel.CancelBuild();
+            return;
+        }
+
         Properties.FlushPendingEdits(); // the build saves the documents: include a value still being typed (§9.2)
         await ViewModel.BuildAsync();
     }

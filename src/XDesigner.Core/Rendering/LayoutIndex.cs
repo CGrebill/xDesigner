@@ -24,8 +24,6 @@ public sealed class LayoutIndex
 
     public ElementLayout? Root { get; }
 
-    public bool Contains(int designId) => _byId.ContainsKey(designId);
-
     public ElementLayout? Find(int designId) => _byId.GetValueOrDefault(designId);
 
     public int? ParentOf(int designId) => _parentOf.TryGetValue(designId, out var parent) ? parent : null;

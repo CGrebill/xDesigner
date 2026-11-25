@@ -128,7 +128,7 @@ public class MoveAndClipboardTests
 
         Assert.True(s.Actions.MoveTo(s.Ids["button1"], plan, s.Layout));
 
-        var order = s.El("StackPanel").Elements().Select(e => (string?)e.Attribute(XName.Get("Name", XamlNamespaces.Xaml)));
+        var order = s.El("StackPanel").Elements().Select(e => (string?)e.Attribute(XName.Get("Name", Frameworks.FrameworkProfile.Xaml2006Namespace)));
         Assert.Equal(["button2", "button1"], order);
         Assert.Contains("      <Button x:Name=\"button2\" Content=\"B\" />\n      <Button x:Name=\"button1\" Content=\"A\" />\n    </StackPanel>", s.Doc.ToXaml());
         UndoAllAndCheck(s);
@@ -213,7 +213,7 @@ public class MoveAndClipboardTests
         Assert.Equal("11", s.A("onCanvas", "Canvas.Left"));
 
         s.Actions.Nudge([s.Ids["button2"]], 0, -1, s.Layout, Catalog);
-        Assert.Equal("button2", (string?)s.El("StackPanel").Elements().First().Attribute(XName.Get("Name", XamlNamespaces.Xaml)));
+        Assert.Equal("button2", (string?)s.El("StackPanel").Elements().First().Attribute(XName.Get("Name", Frameworks.FrameworkProfile.Xaml2006Namespace)));
 
         Assert.False(s.Actions.Nudge([s.Ids["button2"]], 0, -1, s.Layout, Catalog)); // already first
         UndoAllAndCheck(s);
@@ -373,6 +373,22 @@ public class MoveAndClipboardTests
         var layout = new LayoutIndex(new ElementLayout(target.Root.Id, "Window", new RectDto(0, 0, 100, 100), true, ThicknessDto.Zero, ThicknessDto.Zero, null,
             [new ElementLayout(panel.Id, "StackPanel", new RectDto(0, 0, 100, 100), true, ThicknessDto.Zero, ThicknessDto.Zero, new PanelInfo(PanelKind.StackPanel), [])]));
         return (target, new DesignerActions(target, new UndoManager(target)), panel.Id, layout);
+    }
+
+    /// <summary>Controls copied from another framework's file (a mixed solution) aren't pasted as foreign XAML (review M11).</summary>
+    [Fact]
+    public void Paste_RefusesAnotherFrameworksControls()
+    {
+        var maui = XamlDocument.Parse("""<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"><Grid><Label Text="x" /></Grid></ContentPage>""");
+        var copy = new DesignerActions(maui, new UndoManager(maui)).Copy([maui.AllNodes.Single(n => n.TypeName == "Label").Id])!;
+        var (target, actions, panel, layout) = EmptyTarget("""<Window xmlns="https://github.com/avaloniaui"><StackPanel /></Window>""");
+        var before = target.ToXaml();
+
+        Assert.Null(actions.Paste(copy, panel, layout, Catalog, out var problem));
+        Assert.Contains(".NET MAUI", problem, StringComparison.Ordinal);
+        Assert.Null(actions.Paste("""<Label xmlns="http://schemas.microsoft.com/dotnet/2021/maui" />""", panel, layout, Catalog, out problem));
+        Assert.NotNull(problem);
+        Assert.Equal(before, target.ToXaml());
     }
 
     [Fact]

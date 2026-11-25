@@ -190,12 +190,15 @@ public sealed partial class DesignerActions
                 commands.Add(new SetAttributeCommand(grid.Id, attribute, null));
             }
 
+            // The property element is named on the grid's own type (<local:MyGrid.RowDefinitions>), the definitions are the
+            // framework's (<RowDefinition>), whatever namespace a Grid subclass is in (review L1).
             var ns = grid.Element.Name.Namespace;
+            var definitionNs = grid.Document.Profile.DefaultNamespace;
             var holder = new XElement(ns + $"{grid.TypeName}.{attribute}");
             commands.Add(new InsertElementCommand(grid.Id, holder, 0, $"Edit {axis.ToLowerInvariant()}s"));
             foreach (var d in edited)
             {
-                var definition = new XElement(ns + $"{axis}Definition", new XAttribute(size, d.LengthText));
+                var definition = new XElement(definitionNs + $"{axis}Definition", new XAttribute(size, d.LengthText));
                 if (d.Min is { } min)
                 {
                     definition.SetAttributeValue($"Min{size}", XamlValueText.Double(min));

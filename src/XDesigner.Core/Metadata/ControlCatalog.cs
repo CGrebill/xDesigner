@@ -50,6 +50,19 @@ public sealed class ControlCatalog
             return type;
         }
 
+        if (xmlNamespace == Frameworks.FrameworkProfile.MauiGlobalNamespace)
+        {
+            // An aggregate: MAUI's own controls, then any type the project registered for it (review M15).
+            return Resolve(Frameworks.FrameworkProfile.MauiNamespace, localName)
+                ?? All.Where(t => t.Name == localName).OrderByDescending(t => t.IsCreatable).FirstOrDefault();
+        }
+
+        if (xmlNamespace == Frameworks.FrameworkProfile.MauiNamespace
+            && _byXaml.GetValueOrDefault((Frameworks.FrameworkProfile.MauiGlobalNamespace, localName)) is { } registered)
+        {
+            return registered; // an unprefixed project control in a file without namespaces (MAUI 11)
+        }
+
         return ClrNamespaceOf(xmlNamespace) is { } clr ? _byXaml.GetValueOrDefault(("using:" + clr, localName)) : null;
     }
 

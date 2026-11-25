@@ -23,16 +23,27 @@ public sealed record ProjectInfo(
 {
     public string Directory => Path.GetDirectoryName(ProjectPath)!;
 
+    /// <summary>MSBuild's <c>UseWinUI</c> (from the project, its imports or <c>Directory.Build.props</c>).</summary>
+    public bool UseWinUI { get; init; }
+
+    /// <summary>MSBuild's <c>UseMaui</c>.</summary>
+    public bool UseMaui { get; init; }
+
+    /// <summary>
+    /// Package id → version of the project's package references as MSBuild evaluated them (central package management and
+    /// properties resolved); null when the project wasn't evaluated (a project read from its file alone).
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? PackageVersions { get; init; }
+
     /// <summary>For documents of this project: the assembly the renderer should load, if it has been built.</summary>
     public ProjectOutput ToOutput()
     {
         var built = File.Exists(TargetPath) ? TargetPath : null;
-        return new(ProjectPath, AssemblyName, built, Frameworks.FrameworkDetector.Detect(ProjectPath, built).Profile);
+        return new(ProjectPath, AssemblyName, built, DetectFramework().Profile);
     }
 
-    /// <summary>The framework the project uses: from its build when it has one, else from the project file.</summary>
-    public Frameworks.DetectedFramework DetectFramework() =>
-        Frameworks.FrameworkDetector.Detect(ProjectPath, File.Exists(TargetPath) ? TargetPath : null);
+    /// <summary>The framework the project uses: from its build when it has one, else from MSBuild's evaluation (§11.1).</summary>
+    public Frameworks.DetectedFramework DetectFramework() => Frameworks.FrameworkDetector.Detect(this);
 
     public bool Contains(string filePath) =>
         Path.GetFullPath(filePath).StartsWith(Directory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
@@ -44,9 +55,11 @@ public static partial class ProjectReader
     private static readonly string[] Properties =
         ["TargetPath", "AssemblyName", "RootNamespace", "TargetFramework", "TargetFrameworks", "OutputType", "Platform", "UseWinUI", "UseMaui", "WindowsPackageType"];
 
-    /// <summary>The platform WinUI projects are built for here: this machine's (WinUI has no AnyCPU build).</summary>
-    public static string NativePlatform =>
-        System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "ARM64" : "x64";
+    /// <summary>
+    /// The platform WinUI projects without one of their own are built for here (WinUI has no AnyCPU build): x64, the
+    /// designer's renderer's, which can't load an ARM64 build (it runs emulated on ARM64 Windows, as the app then does; review M25).
+    /// </summary>
+    public static string NativePlatform => "x64";
 
     /// <summary>
     /// Evaluates the project with MSBuild (no build needed). A multi-targeted project is evaluated for its first desktop
@@ -56,15 +69,24 @@ public static partial class ProjectReader
     public static async Task<ProjectInfo> ReadAsync(string projectPath, CancellationToken cancellationToken = default)
     {
         projectPath = Path.GetFullPath(projectPath);
-        var values = await GetPropertiesAsync(projectPath, [], cancellationToken).ConfigureAwait(false);
+        var evaluation = await EvaluateAsync(projectPath, [], cancellationToken).ConfigureAwait(false);
+        var values = evaluation.Properties;
+        var multiTargeted = false;
         if (string.IsNullOrEmpty(values.GetValueOrDefault("TargetFramework")) && values.GetValueOrDefault("TargetFrameworks") is { Length: > 0 } frameworks)
         {
             var list = frameworks.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            // A desktop framework: plain netX.Y, else the Windows one (MAUI), never Android or iOS first.
-            var pick = list.FirstOrDefault(f => !f.Contains('-'))
-                ?? list.FirstOrDefault(f => f.Contains("-windows", StringComparison.OrdinalIgnoreCase))
+            multiTargeted = list.Length > 1;
+
+            // MAUI: its Windows framework (a plain netX.Y beside it is the unit-test target, review M7). Others: a desktop
+            // framework, plain netX.Y, else the Windows one; never Android or iOS first.
+            var isMauiProject = string.Equals(values.GetValueOrDefault("UseMaui"), "true", StringComparison.OrdinalIgnoreCase);
+            var windows = list.FirstOrDefault(f => f.Contains("-windows", StringComparison.OrdinalIgnoreCase));
+            var pick = (isMauiProject ? windows : null)
+                ?? list.FirstOrDefault(f => !f.Contains('-'))
+                ?? windows
                 ?? list[0];
-            values = await GetPropertiesAsync(projectPath, [$"-p:TargetFramework={pick}"], cancellationToken).ConfigureAwait(false);
+            evaluation = await EvaluateAsync(projectPath, [$"-p:TargetFramework={pick}"], cancellationToken).ConfigureAwait(false);
+            values = evaluation.Properties;
         }
 
         string? platform = null;
@@ -79,7 +101,8 @@ public static partial class ProjectReader
                 string[] extra = values.GetValueOrDefault("TargetFramework") is { Length: > 0 } tfm
                     ? [$"-p:TargetFramework={tfm}", $"-p:Platform={platform}"]
                     : [$"-p:Platform={platform}"];
-                values = await GetPropertiesAsync(projectPath, extra, cancellationToken).ConfigureAwait(false);
+                evaluation = await EvaluateAsync(projectPath, extra, cancellationToken).ConfigureAwait(false);
+                values = evaluation.Properties;
             }
         }
 
@@ -94,14 +117,26 @@ public static partial class ProjectReader
             values.GetValueOrDefault("TargetFramework") ?? "",
             values.GetValueOrDefault("OutputType") ?? "",
             platform,
-            (isWinUI || isMaui) && !string.Equals(values.GetValueOrDefault("WindowsPackageType"), "None", StringComparison.OrdinalIgnoreCase),
-            isMaui && values.GetValueOrDefault("TargetFramework") is { Length: > 0 } framework ? framework : null);
+            (isWinUI || isMaui) && values.GetValueOrDefault("OutputType") is "WinExe" or "Exe"
+                && !string.Equals(values.GetValueOrDefault("WindowsPackageType"), "None", StringComparison.OrdinalIgnoreCase),
+            // Every multi-targeted project builds and runs one framework: dotnet run refuses to pick (review M7).
+            (isMaui || multiTargeted) && values.GetValueOrDefault("TargetFramework") is { Length: > 0 } framework ? framework : null)
+        {
+            UseWinUI = string.Equals(values.GetValueOrDefault("UseWinUI"), "true", StringComparison.OrdinalIgnoreCase),
+            UseMaui = isMaui,
+            PackageVersions = evaluation.Packages,
+        };
     }
 
-    private static async Task<Dictionary<string, string>> GetPropertiesAsync(string projectPath, string[] extra, CancellationToken cancellationToken)
+    /// <summary>What MSBuild evaluated: the properties asked for, and package id → version of the package references.</summary>
+    internal sealed record Evaluation(Dictionary<string, string> Properties, Dictionary<string, string> Packages);
+
+    private static async Task<Evaluation> EvaluateAsync(string projectPath, string[] extra, CancellationToken cancellationToken)
     {
         var args = new List<string> { "msbuild", projectPath, "-nologo" };
         args.AddRange(Properties.Select(p => "-getProperty:" + p));
+        // The packages too: their versions may come from Directory.Build.props or central package management (review M6).
+        args.AddRange(["-getItem:PackageReference", "-getItem:PackageVersion"]);
         args.AddRange(extra);
         var result = await ProcessRunner.RunAsync("dotnet", args, Path.GetDirectoryName(projectPath)!, null, cancellationToken).ConfigureAwait(false);
         if (result.ExitCode != 0)
@@ -109,11 +144,25 @@ public static partial class ProjectReader
             throw new ProjectException($"MSBuild couldn't read {Path.GetFileName(projectPath)}:{Environment.NewLine}{result.Output.Trim()}");
         }
 
-        return ParseProperties(result.Output);
+        try
+        {
+            // stdout alone: evaluation warnings go to stderr and would break the JSON (review L15).
+            return ParseEvaluation(result.StandardOutput.Length > 0 ? result.StandardOutput : result.Output);
+        }
+        catch (JsonException ex)
+        {
+            throw new ProjectException($"MSBuild's answer about {Path.GetFileName(projectPath)} couldn't be read ({ex.Message}):{Environment.NewLine}{result.Output.Trim()}");
+        }
     }
 
     /// <summary>Parses <c>-getProperty</c> output: JSON <c>{"Properties": {...}}</c> for several properties.</summary>
-    internal static Dictionary<string, string> ParseProperties(string output)
+    internal static Dictionary<string, string> ParseProperties(string output) => ParseEvaluation(output).Properties;
+
+    /// <summary>
+    /// Parses <c>-getProperty</c>/<c>-getItem</c> output: <c>{"Properties": {...}, "Items": {"PackageReference": [...]}}</c>.
+    /// A package's version is its <c>VersionOverride</c>, its <c>Version</c>, or the central <c>PackageVersion</c>'s.
+    /// </summary>
+    internal static Evaluation ParseEvaluation(string output)
     {
         var start = output.IndexOf('{');
         if (start < 0)
@@ -122,15 +171,48 @@ public static partial class ProjectReader
         }
 
         using var json = JsonDocument.Parse(output[start..]);
-        return json.RootElement.GetProperty("Properties").EnumerateObject()
+        var properties = json.RootElement.GetProperty("Properties").EnumerateObject()
             .ToDictionary(p => p.Name, p => p.Value.GetString() ?? "", StringComparer.OrdinalIgnoreCase);
+
+        var packages = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (json.RootElement.TryGetProperty("Items", out var items))
+        {
+            static IEnumerable<JsonElement> Of(JsonElement items, string name) =>
+                items.TryGetProperty(name, out var list) && list.ValueKind == JsonValueKind.Array ? list.EnumerateArray() : [];
+            static string? Text(JsonElement item, string name) =>
+                item.TryGetProperty(name, out var value) && value.GetString() is { Length: > 0 } text ? text : null;
+
+            var central = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var version in Of(items, "PackageVersion"))
+            {
+                if (Text(version, "Identity") is { } id && Text(version, "Version") is { } v)
+                {
+                    central[id] = v;
+                }
+            }
+
+            foreach (var reference in Of(items, "PackageReference"))
+            {
+                if (Text(reference, "Identity") is { } id
+                    && (Text(reference, "VersionOverride") ?? Text(reference, "Version") ?? central.GetValueOrDefault(id)) is { } v)
+                {
+                    packages[id] = v;
+                }
+            }
+        }
+
+        return new Evaluation(properties, packages);
     }
 
     /// <summary>
     /// The project's XAML files (<c>.axaml</c> and <c>.xaml</c>: Windows, Pages, UserControls…), skipping <c>bin</c>,
-    /// <c>obj</c> and hidden folders.
+    /// <c>obj</c> and hidden folders, and MAUI's platform folder: <c>Platforms\Windows\App.xaml</c> is a WinUI file (review M8).
     /// </summary>
-    public static IReadOnlyList<string> XamlFiles(string projectDirectory) => Files(projectDirectory, "*.axaml", "*.xaml");
+    public static IReadOnlyList<string> XamlFiles(string projectDirectory)
+    {
+        var platforms = Path.Combine(Path.GetFullPath(projectDirectory), "Platforms") + Path.DirectorySeparatorChar;
+        return Files(projectDirectory, "*.axaml", "*.xaml").Where(f => !f.StartsWith(platforms, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
 
     /// <summary>The project's XAML and C# files (what Solution Explorer lists), skipping <c>bin</c>, <c>obj</c> and hidden folders.</summary>
     public static IReadOnlyList<string> SourceFiles(string projectDirectory) => Files(projectDirectory, "*.axaml", "*.xaml", "*.cs");
@@ -208,12 +290,6 @@ public static partial class ProjectReader
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
-
-    /// <summary>
-    /// The Avalonia version a built project uses: <c>Avalonia.Base.dll</c> in the output folder (apps), else the
-    /// <c>Avalonia</c> package listed in its <c>deps.json</c> (libraries). Null when it can't tell.
-    /// </summary>
-    public static Version? AvaloniaVersionOf(string targetPath) => Frameworks.FrameworkDetector.AvaloniaVersion(targetPath);
 
     [GeneratedRegex("""^Project\("\{[^}]+\}"\)\s*=\s*"[^"]*"\s*,\s*"(?<path>[^"]+)"\s*,""", RegexOptions.Multiline)]
     private static partial Regex SlnProjectLine();

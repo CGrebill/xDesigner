@@ -11,8 +11,9 @@ namespace XDesigner.Core.Project;
 /// <list type="bullet">
 /// <item>most projects with <c>dotnet run --no-build</c> in the project folder (WinUI ones with their platform), output streamed
 /// to Output ▸ Run;</item>
-/// <item>a packaged (MSIX) WinUI app by registering its build output as a package and activating it, as Visual Studio does,
-/// which needs Developer Mode; without it, its exe is started directly (it then runs without package identity).</item>
+/// <item>a packaged (MSIX) WinUI or MAUI app by registering its build output as a package and activating it, as Visual
+/// Studio does, which needs Developer Mode; without it, a self-contained one's exe is started directly (it then runs
+/// without package identity), and one that uses the installed Windows App SDK is refused with how to run it.</item>
 /// </list>
 /// <see cref="Stop"/> ends the whole process tree.
 /// </summary>
@@ -27,8 +28,60 @@ public sealed class AppRunner : IDisposable
         _process = process;
     }
 
-    /// <summary>Raised once when the app has exited, with its exit code (any thread).</summary>
-    public event Action<int>? Exited;
+    private readonly Lock _exitLock = new();
+    private Action<int>? _exited;
+    private int? _exitCode;
+
+    /// <summary>
+    /// Raised once when the app has exited, with its exit code (any thread). A handler added after the app already
+    /// exited (an app that crashed while it was being started) is called at once (review L13).
+    /// </summary>
+    public event Action<int>? Exited
+    {
+        add
+        {
+            int? code;
+            lock (_exitLock)
+            {
+                code = _exitCode;
+                if (code is null)
+                {
+                    _exited += value;
+                }
+            }
+
+            if (code is { } c)
+            {
+                value?.Invoke(c);
+            }
+        }
+
+        remove
+        {
+            lock (_exitLock)
+            {
+                _exited -= value;
+            }
+        }
+    }
+
+    private void RaiseExited(int code)
+    {
+        Action<int>? handlers;
+        lock (_exitLock)
+        {
+            if (_exitCode is not null)
+            {
+                return;
+            }
+
+            _exitCode = code;
+            handlers = _exited;
+            _exited = null;
+        }
+
+        handlers?.Invoke(code);
+    }
 
     public bool IsRunning
     {
@@ -68,7 +121,7 @@ public sealed class AppRunner : IDisposable
         return Launch(ProcessRunner.CreateStartInfo("dotnet", args, project.Directory), onLine);
     }
 
-    /// <summary>Whether Windows lets unsigned packages be registered from a folder (Settings › System › For developers).</summary>
+    /// <summary>Whether Windows lets unsigned packages be registered from a folder (Settings ▸ System ▸ For developers).</summary>
     public static bool IsDeveloperModeOn()
     {
         if (!OperatingSystem.IsWindows())
@@ -105,12 +158,21 @@ public sealed class AppRunner : IDisposable
         var layout = Path.GetDirectoryName(project.TargetPath)!;
         var manifest = Path.Combine(layout, "AppxManifest.xml");
         var exe = Path.ChangeExtension(project.TargetPath, ".exe");
+        if (File.Exists(manifest) && !IsDeveloperModeOn() && !File.Exists(Path.Combine(layout, "Microsoft.WindowsAppRuntime.dll")))
+        {
+            // Not self-contained: its exe finds the Windows App SDK only through package identity, so it would just exit (review L14).
+            throw new ProjectException(
+                $"{project.Name} is a packaged app that uses the Windows App SDK installed on Windows, which it can only reach when it runs "
+                + "as a registered package. Turn on Developer Mode in Settings ▸ System ▸ For developers so the designer can register it, "
+                + "or set <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained> in the project.");
+        }
+
         if (!File.Exists(manifest) || !IsDeveloperModeOn())
         {
             onLine(File.Exists(manifest)
                 ? "Developer Mode is off, so Windows won't register the app as a package: starting its exe directly instead. It runs "
                   + "without package identity, so features that need one (notifications, app data, the Store) won't work. To run it as "
-                  + "a package, turn on Developer Mode in Settings › System › For developers."
+                  + "a package, turn on Developer Mode in Settings ▸ System ▸ For developers."
                 : $"There is no AppxManifest.xml next to {Path.GetFileName(exe)}, so the app is started directly.");
             var direct = ProcessRunner.CreateStartInfo(exe, [], layout);
             return Launch(direct, onLine);
@@ -135,7 +197,17 @@ public sealed class AppRunner : IDisposable
         var appUserModelId = $"{familyName}!{applicationId}";
         var activation = (IApplicationActivationManager)new ApplicationActivationManager();
         activation.ActivateApplication(appUserModelId, null, 0, out var processId);
-        var process = Process.GetProcessById((int)processId);
+        Process process;
+        try
+        {
+            process = Process.GetProcessById((int)processId);
+        }
+        catch (ArgumentException)
+        {
+            // Gone before it could be watched: it crashed at once (review L13).
+            throw new ProjectException($"{project.Name} exited as soon as it started. Run it from Visual Studio or check the Windows event log (Application) for why.");
+        }
+
         onLine($"Started {appUserModelId} (process {processId}). A packaged app's console output isn't shown here.");
         return Attach(process, onLine, captureOutput: false);
     }
@@ -180,7 +252,7 @@ public sealed class AppRunner : IDisposable
                 code = 0; // an activated process may not report its exit code to us
             }
 
-            runner.Exited?.Invoke(code);
+            runner.RaiseExited(code);
         };
 
         if (captureOutput)
@@ -191,7 +263,7 @@ public sealed class AppRunner : IDisposable
         }
         else if (process.HasExited)
         {
-            runner.Exited?.Invoke(0);
+            runner.RaiseExited(0);
         }
 
         return runner;

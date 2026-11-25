@@ -69,9 +69,6 @@ internal sealed partial class RenderSurface : IDisposable
     }
 
     /// <summary>Runs <paramref name="work"/> on the UI thread, one piece of work at a time (a render awaits the GPU in between).</summary>
-    public Task<T> InvokeAsync<T>(Func<T> work) => InvokeTaskAsync(() => Task.FromResult(work()));
-
-    /// <inheritdoc cref="InvokeAsync{T}(Func{T})"/>
     public Task<T> InvokeTaskAsync<T>(Func<Task<T>> work)
     {
         var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);

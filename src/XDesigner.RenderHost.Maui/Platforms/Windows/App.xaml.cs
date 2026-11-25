@@ -49,7 +49,7 @@ public partial class HostApp : MauiWinUIApplication
     /// <summary>Physical pixels per DIP of the surface's monitor.</summary>
     internal double RasterizationScale => _surface?.RasterizationScale ?? 1.0;
 
-    /// <inheritdoc cref="RenderSurface.InvokeAsync{T}(Func{T})"/>
+    /// <summary>Runs <paramref name="work"/> on the UI thread, after the work queued before it (<see cref="RenderSurface.InvokeTaskAsync{T}"/>).</summary>
     internal Task<T> InvokeAsync<T>(Func<T> work) => InvokeTaskAsync(() => Task.FromResult(work()));
 
     /// <inheritdoc cref="RenderSurface.InvokeTaskAsync{T}(Func{Task{T}})"/>
@@ -61,9 +61,11 @@ public partial class HostApp : MauiWinUIApplication
         if (_options.UserAssemblyPath is { } assemblyPath)
         {
             UserAssembly = Assembly.LoadFrom(assemblyPath);
+            LoadLibraries(UserAssembly);
             if (!_options.NoUserApp)
             {
-                var create = UserAssembly.GetTypes()
+                // One type that fails to load (a missing dependency) mustn't lose the project's App (review L45).
+                var create = XDesigner.RenderHost.Metadata.MetadataProvider.SafeGetTypes(UserAssembly)
                     .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Static))
                     .FirstOrDefault(m => m.Name == "CreateMauiApp" && m.ReturnType == typeof(MauiApp) && m.GetParameters().Length == 0);
                 if (create is not null)
@@ -83,15 +85,28 @@ public partial class HostApp : MauiWinUIApplication
     {
         try
         {
-            using (WindowHider.Install())
+            // For the host's lifetime: windows the project opens later stay hidden too (review M29).
+            _windowHider = WindowHider.Install();
+            try
             {
                 base.OnLaunched(args); // creates the project's App and its main window (hidden)
+            }
+            catch (Exception ex) when (Microsoft.Maui.Controls.Application.Current is { Windows.Count: 0 } app)
+            {
+                // The App (and its resources, styles, fonts) exists, but its main page failed at design time (a service it
+                // needs isn't there): a window of our own gives the MAUI context instead of losing the App (review M28).
+                _warnings.Add($"The project's main page couldn't be created in the designer ({(ex is TargetInvocationException { InnerException: { } inner } ? inner.Message : ex.Message)}); its App's styles and fonts are still used.");
+                app.OpenWindow(new Microsoft.Maui.Controls.Window(new ContentPage()));
             }
 
             var window = Microsoft.Maui.Controls.Application.Current?.Windows is { Count: > 0 } windows
                 ? windows[0]
                 : throw new InvalidOperationException("The project's App opened no window.");
             MauiContext = window.Handler?.MauiContext ?? throw new InvalidOperationException("The project's window has no MAUI context.");
+
+            // Its page goes: only its context is needed, and the project's MainPage would otherwise keep running unseen
+            // (polling, animating, playing media) for the host's lifetime (review M28).
+            window.Page = new ContentPage();
             _surface = await RenderSurface.CreateAsync();
         }
         catch (Exception ex)
@@ -116,10 +131,35 @@ public partial class HostApp : MauiWinUIApplication
         Finish(exitCode);
     }
 
+    /// <summary>
+    /// The project's own libraries in the app folder, loaded now: one nothing has used yet would load only when the XAML
+    /// loader meets it, after the sanitizer looked for its types, and be missing from the toolbox (review M24).
+    /// </summary>
+    private static void LoadLibraries(Assembly userAssembly)
+    {
+        foreach (var reference in userAssembly.GetReferencedAssemblies())
+        {
+            if (File.Exists(Path.Combine(AppContext.BaseDirectory, reference.Name + ".dll")))
+            {
+                try
+                {
+                    Assembly.Load(reference);
+                }
+                catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or BadImageFormatException)
+                {
+                    Console.Error.WriteLine($"Couldn't load {reference.Name}: {ex.Message}");
+                }
+            }
+        }
+    }
+
+    private IDisposable? _windowHider;
+
     private void Finish(int exitCode)
     {
         _setExitCode(exitCode);
         _surface?.Dispose();
+        _windowHider?.Dispose();
         Exit();
     }
 }

@@ -7,11 +7,13 @@ namespace XDesigner.RenderHost.Metadata;
 
 /// <summary>
 /// Reads effective property values of a rendered element, formatted as XAML text (§14.4). MAUI tells whether a value was set
-/// on the element (<c>IsSet</c>), not where an unset one comes from: the source is Local or Default. UI thread only.
+/// on the element (<c>IsSet</c>), not by what: a set value the XAML writes is Local, one it doesn't (a style's, review L42)
+/// is Style, and an unset one Default. UI thread only.
 /// </summary>
 internal static class ValueReader
 {
-    public static PropertyValueDto[] Read(BindableObject element, IEnumerable<HostProperty> properties)
+    /// <param name="written">The properties the element's XAML writes; null counts every set value as Local.</param>
+    public static PropertyValueDto[] Read(BindableObject element, IEnumerable<HostProperty> properties, IReadOnlySet<string>? written = null)
     {
         var values = new List<PropertyValueDto>();
         foreach (var property in properties)
@@ -21,7 +23,9 @@ internal static class ValueReader
                 if (property.Bindable is { } bindable)
                 {
                     values.Add(new PropertyValueDto(property.Info.Key, Format(element.GetValue(bindable)),
-                        element.IsSet(bindable) ? ValueSource.Local : ValueSource.Default));
+                        !element.IsSet(bindable) ? ValueSource.Default
+                        : written is null || written.Contains(property.Info.Key) ? ValueSource.Local
+                        : ValueSource.Style));
                 }
                 else if (property.Clr is { } clr)
                 {
@@ -87,7 +91,8 @@ internal static class ValueReader
         double d => XamlValueText.Double(d),
         float f => XamlValueText.Double(f),
         Thickness t => XamlValueText.Thickness(t.Left, t.Top, t.Right, t.Bottom),
-        CornerRadius c => XamlValueText.CornerRadius(c.TopLeft, c.TopRight, c.BottomRight, c.BottomLeft),
+        // MAUI's own order: top left, top right, bottom left, bottom right (review M16).
+        CornerRadius c => XamlValueText.CornerRadius(c.TopLeft, c.TopRight, c.BottomLeft, c.BottomRight),
         MauiColor c => Color(c),
         SolidColorBrush { Color: { } c } => Color(c),
         Brush b => $"({b.GetType().Name})",

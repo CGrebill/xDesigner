@@ -11,7 +11,7 @@ namespace XDesigner.App;
 public sealed partial class MainWindow
 {
     private static string DefaultProjectsFolder =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Avalonia Projects");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "xDesigner Projects"); // for every framework
 
     private string? _lastProjectsFolder;
 
@@ -19,12 +19,13 @@ public sealed partial class MainWindow
     {
         var project = ViewModel.Project;
         var running = ViewModel.IsRunning;
-        RunButton.IsEnabled = RunMenuItem.IsEnabled = project is not null && !ViewModel.IsBuilding;
+        RunButton.IsEnabled = RunMenuItem.IsEnabled = project is not null && !ViewModel.IsBusy; // busy: a press would be ignored (review L22)
         RunButtonText.Text = running ? "Restart" : "Run";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(RunButton, RunButtonText.Text); // read as shown (review L52)
         ToolTipService.SetToolTip(RunButton, running ? "Stop, rebuild and run again (F5)" : "Save, build and run the project (F5)");
         StopButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         StopMenuItem.IsEnabled = running;
-        AddWindowMenuItem.IsEnabled = AddUserControlMenuItem.IsEnabled = project is not null;
+        AddWindowMenuItem.IsEnabled = AddUserControlMenuItem.IsEnabled = AddPageMenuItem.IsEnabled = project is not null && ViewModel.ProjectProfile is not null; // review M5
         var kinds = project is not null && ViewModel.ProjectProfile is { } profile ? ProjectTemplates.ItemKindsFor(profile) : [ItemKind.Window, ItemKind.UserControl];
         AddPageMenuItem.Visibility = kinds.Contains(ItemKind.Page) ? Visibility.Visible : Visibility.Collapsed;
         AddWindowMenuItem.Visibility = kinds.Contains(ItemKind.Window) ? Visibility.Visible : Visibility.Collapsed;
@@ -44,7 +45,9 @@ public sealed partial class MainWindow
     /// <summary>File ▸ New project: name, folder and window title; the project is created, opened and built.</summary>
     private async void NewProject_Click(object sender, RoutedEventArgs e)
     {
-        var name = new TextBox { Header = "Project name", PlaceholderText = "HelloAvalonia", Text = NextFreeName(_lastProjectsFolder ?? DefaultProjectsFolder) };
+        var frameworksList = ProjectTemplates.CreatableFrameworks;
+        var suggestedName = NextFreeName(_lastProjectsFolder ?? DefaultProjectsFolder, frameworksList[0]);
+        var name = new TextBox { Header = "Project name", PlaceholderText = suggestedName, Text = suggestedName };
         var location = new TextBox { Header = "Location", Text = _lastProjectsFolder ?? DefaultProjectsFolder, MinWidth = 360 };
         var browse = new Button { Content = "Browse…", VerticalAlignment = VerticalAlignment.Bottom };
         var title = new TextBox { Header = "Window title", PlaceholderText = "Same as the project name" };
@@ -69,6 +72,14 @@ public sealed partial class MainWindow
             var canPackage = selected.Family is Core.Frameworks.FrameworkFamily.WinUI or Core.Frameworks.FrameworkFamily.Maui;
             packaged.Visibility = canPackage ? Visibility.Visible : Visibility.Collapsed;
             var packagedNote = canPackage && packaged.IsOn ? " Running a packaged app from xDesigner registers it with Windows, which needs Developer Mode." : "";
+
+            // The suggestions follow the framework until the name is typed over.
+            title.Header = selected.Family == Core.Frameworks.FrameworkFamily.Maui ? "Main page title" : "Window title";
+            if (name.Text == suggestedName)
+            {
+                suggestedName = NextFreeName(location.Text.Trim(), selected);
+                name.Text = name.PlaceholderText = suggestedName;
+            }
             description.Text = selected.Family switch
             {
                 Core.Frameworks.FrameworkFamily.WinUI =>
@@ -109,15 +120,33 @@ public sealed partial class MainWindow
 
         void Validate()
         {
-            var error = ProjectTemplates.ValidateProjectName(name.Text.Trim());
-            var target = Path.Combine(location.Text.Trim(), name.Text.Trim());
-            if (error is null && string.IsNullOrWhiteSpace(location.Text))
+            var error = ProjectTemplates.ValidateProjectName(name.Text.Trim(), frameworks[Math.Max(0, framework.SelectedIndex)]);
+            var folder = location.Text.Trim();
+            var target = "";
+            if (error is null)
             {
-                error = "Choose a folder for the project.";
+                // A full path only: a relative one would land in whatever the current folder is (review M33).
+                error = folder.Length == 0 ? "Choose a folder for the project."
+                    : folder.IndexOfAny(Path.GetInvalidPathChars()) >= 0 || folder.Contains('|') ? "The folder contains characters a path can't have."
+                    : !Path.IsPathFullyQualified(folder) ? @"Enter the folder's full path, such as C:\Users\you\Documents\Projects."
+                    : !Directory.Exists(Path.GetPathRoot(folder)) ? $"There is no drive {Path.GetPathRoot(folder)}."
+                    : null;
             }
-            else if (error is null && Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any())
+
+            if (error is null)
             {
-                error = $"{target} already exists and isn't empty.";
+                try
+                {
+                    target = Path.GetFullPath(Path.Combine(folder, name.Text.Trim()));
+                    if (Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any())
+                    {
+                        error = $"{target} already exists and isn't empty.";
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+                {
+                    error = $"That folder can't be used: {ex.Message}";
+                }
             }
 
             where.Text = error is null ? $"Creates {Path.Combine(target, name.Text.Trim() + ".csproj")}" : "";
@@ -126,6 +155,7 @@ public sealed partial class MainWindow
         }
 
         name.TextChanged += (_, _) => Validate();
+        framework.SelectionChanged += (_, _) => Validate(); // each framework reserves other names
         location.TextChanged += (_, _) => Validate();
         browse.Click += async (_, _) =>
         {
@@ -144,8 +174,18 @@ public sealed partial class MainWindow
             return;
         }
 
-        _lastProjectsFolder = location.Text.Trim();
-        Directory.CreateDirectory(_lastProjectsFolder);
+        var parent = Path.GetFullPath(location.Text.Trim());
+        try
+        {
+            Directory.CreateDirectory(parent);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            ShowNotification(NotifyKind.Error, $"Couldn't create the folder {parent}: {ex.Message}");
+            return;
+        }
+
+        _lastProjectsFolder = parent;
         var chosen = frameworks[Math.Max(0, framework.SelectedIndex)];
         var asPackage = chosen.Family is Core.Frameworks.FrameworkFamily.WinUI or Core.Frameworks.FrameworkFamily.Maui && packaged.IsOn;
         if (await ViewModel.CreateProjectAsync(_lastProjectsFolder, name.Text.Trim(), title.Text, chosen, asPackage) is { } failed)
@@ -154,17 +194,33 @@ public sealed partial class MainWindow
         }
     }
 
-    private static string NextFreeName(string folder)
+    /// <summary><c>HelloAvalonia</c>, <c>HelloWinUI</c> or <c>HelloMaui</c>, numbered when that folder is taken.</summary>
+    private static string NextFreeName(string folder, Core.Frameworks.FrameworkProfile framework)
     {
-        for (var n = 1; ; n++)
+        var stem = "Hello" + framework.Family switch
         {
-            var candidate = n == 1 ? "HelloAvalonia" : $"HelloAvalonia{n}";
-            var path = Path.Combine(folder, candidate);
-            if (!Directory.Exists(path) || !Directory.EnumerateFileSystemEntries(path).Any())
+            Core.Frameworks.FrameworkFamily.WinUI => "WinUI",
+            Core.Frameworks.FrameworkFamily.Maui => "Maui",
+            _ => "Avalonia",
+        };
+        for (var n = 1; n < 1000; n++)
+        {
+            var candidate = n == 1 ? stem : $"{stem}{n}";
+            try
             {
-                return candidate;
+                var path = Path.Combine(folder, candidate);
+                if (!Directory.Exists(path) || !Directory.EnumerateFileSystemEntries(path).Any())
+                {
+                    return candidate;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                return candidate; // the location is checked when it's validated
             }
         }
+
+        return stem;
     }
 
     private async void AddWindow_Click(object sender, RoutedEventArgs e) => await AddItemAsync(ItemKind.Window);

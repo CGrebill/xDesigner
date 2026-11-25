@@ -39,7 +39,8 @@ public sealed partial class DesignerActions
         var root = _document.Xml.Root!;
         var fragment = new XElement(Fragment + "Fragment",
             new XAttribute(XNamespace.Xmlns + "xd", FragmentNamespace),
-            new XAttribute(Fragment + "Source", _document.InstanceId));
+            new XAttribute(Fragment + "Source", _document.InstanceId),
+            new XAttribute(Fragment + "Framework", _document.Profile.Family.ToString()));
         foreach (var declaration in root.Attributes().Where(a => a.IsNamespaceDeclaration && a.Name.LocalName != "xd"))
         {
             fragment.Add(new XAttribute(declaration));
@@ -90,6 +91,16 @@ public sealed partial class DesignerActions
             return null;
         }
 
+        // Another framework's controls (a mixed solution) would paste as foreign XAML that neither renders nor builds (review M11).
+        var sourceFamily = isFragment
+            ? Enum.TryParse<Frameworks.FrameworkFamily>((string?)parsed.Attribute(Fragment + "Framework"), out var f) ? f : (Frameworks.FrameworkFamily?)null
+            : Frameworks.FrameworkProfile.FamilyOf(elements[0].Name.Namespace);
+        if (sourceFamily is { } family && family != _document.Profile.Family)
+        {
+            problem = $"These controls are {Frameworks.DetectedFramework.FamilyName(family)} XAML, and this file is {Frameworks.DetectedFramework.FamilyName(_document.Profile.Family)}: they can't be pasted here.";
+            return null;
+        }
+
         // Target: the selection, or the nearest ancestor that can take children.
         var start = (selectedId is { } sid ? _document.FindById(sid) : null) ?? _document.Root;
         ElementNode? target = null;
@@ -106,7 +117,7 @@ public sealed partial class DesignerActions
 
         if (target is null || targetType is null)
         {
-            problem = "Select a panel (Grid, StackPanel, Canvas…) to paste into.";
+            problem = $"Select a panel ({_document.Profile.PanelExamples}) to paste into.";
             return null;
         }
 
@@ -170,7 +181,7 @@ public sealed partial class DesignerActions
             {
                 if (root.PrefixOf(ns) is null && root.DefaultNamespaceOf() != ns && clone.PrefixOf(ns) is null && declared.Add(ns))
                 {
-                    var prefix = UniquePrefix(root, (isFragment ? parsed.PrefixOf(ns) : context.LookupPrefix(ns.NamespaceName)) ?? "local");
+                    var prefix = root.FreePrefix((isFragment ? parsed.PrefixOf(ns) : context.LookupPrefix(ns.NamespaceName)) ?? "local");
                     commands.Add(new SetAttributeCommand(_document.Root.Id, XNamespace.Xmlns + prefix, ns.NamespaceName));
                 }
             }
@@ -204,8 +215,7 @@ public sealed partial class DesignerActions
             context.AddNamespace(declaration.Name.LocalName, declaration.Value);
         }
 
-        var profile = _document.Profile;
-        foreach (var (prefix, ns) in new[] { ("x", profile.XamlNamespace.NamespaceName), ("d", profile.DesignNamespace.NamespaceName), ("mc", XamlNamespaces.MarkupCompatibility) })
+        foreach (var (prefix, ns) in new[] { ("x", _document.XamlNamespace.NamespaceName), ("d", _document.DesignNamespace.NamespaceName), ("mc", XamlNamespaces.MarkupCompatibility) })
         {
             if (context.LookupNamespace(prefix) is null)
             {
@@ -313,7 +323,9 @@ public sealed partial class DesignerActions
 
     private static void Offset(XElement element, string attribute, Frameworks.LayoutVocabulary vocabulary)
     {
-        if (double.TryParse(vocabulary.Get(element, attribute), NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        // A proportional position (MAUI LayoutFlags) isn't in DIPs: offsetting it by 10 would throw the copy off the layout.
+        if (!vocabulary.IsProportional(element, attribute)
+            && double.TryParse(vocabulary.Get(element, attribute), NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
         {
             vocabulary.Apply(element, [new(attribute, (value + 10).ToString(CultureInfo.InvariantCulture))]);
         }
@@ -325,15 +337,4 @@ public sealed partial class DesignerActions
             .Where(ns => ns != XNamespace.None && ns != XNamespace.Xml && ns != XNamespace.Xmlns)
             .Distinct();
 
-    private static string UniquePrefix(XElement root, string wanted)
-    {
-        var used = root.Attributes().Where(a => a.IsNamespaceDeclaration).Select(a => a.Name.LocalName).ToHashSet();
-        var prefix = wanted;
-        for (var n = 2; used.Contains(prefix); n++)
-        {
-            prefix = wanted + n;
-        }
-
-        return prefix;
-    }
 }

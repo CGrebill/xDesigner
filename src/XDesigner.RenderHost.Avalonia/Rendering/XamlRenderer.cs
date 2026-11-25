@@ -33,9 +33,6 @@ internal sealed class XamlRenderer
     /// <summary>The root object of the last successful render (kept alive for value queries).</summary>
     public object? CurrentRoot { get; private set; }
 
-    /// <summary>The window that hosted the last successful render.</summary>
-    public Window? CurrentWindow { get; private set; }
-
     public RenderResult Render(RenderRequest request)
     {
         Dispatcher.UIThread.VerifyAccess();
@@ -70,12 +67,11 @@ internal sealed class XamlRenderer
 
         try
         {
-            window.RequestedThemeVariant = request.Theme switch
+            // Default leaves the theme to the file (a <Window RequestedThemeVariant="Dark">) and the App (review L29).
+            if (request.Theme is ThemeVariantKind.Light or ThemeVariantKind.Dark)
             {
-                ThemeVariantKind.Light => ThemeVariant.Light,
-                ThemeVariantKind.Dark => ThemeVariant.Dark,
-                _ => ThemeVariant.Default,
-            };
+                window.RequestedThemeVariant = request.Theme == ThemeVariantKind.Light ? ThemeVariant.Light : ThemeVariant.Dark;
+            }
 
             window.Show();
             LayoutPasses(window);
@@ -100,7 +96,7 @@ internal sealed class XamlRenderer
     {
         if (root is Window window)
         {
-            var size = request.DesignSize is { } ds
+            var size = request.DesignSize is { } ds && IsUsable(ds.Width) && IsUsable(ds.Height) // 0 or NaN: the file's size (review L35)
                 ? new Size(ds.Width, ds.Height)
                 : new Size(
                     FirstUsable(window.Width, Avalonia.Controls.Design.GetWidth(window), DefaultDesignSize.Width),
@@ -113,7 +109,7 @@ internal sealed class XamlRenderer
 
         if (root is Control control)
         {
-            var size = request.DesignSize is { } ds
+            var size = request.DesignSize is { } ds && IsUsable(ds.Width) && IsUsable(ds.Height) // 0 or NaN: the file's size (review L35)
                 ? new Size(ds.Width, ds.Height)
                 : new Size(
                     FirstUsable(control.Width, Avalonia.Controls.Design.GetWidth(control), DefaultDesignSize.Width),
@@ -139,8 +135,9 @@ internal sealed class XamlRenderer
             $"Only Windows and controls can be designed; the document root is a {root.GetType().Name}.");
     }
 
-    private static double FirstUsable(params double[] candidates) =>
-        candidates.First(v => !double.IsNaN(v) && !double.IsInfinity(v) && v > 0);
+    private static double FirstUsable(params double[] candidates) => candidates.First(IsUsable);
+
+    private static bool IsUsable(double v) => !double.IsNaN(v) && !double.IsInfinity(v) && v > 0;
 
     /// <summary>Runs layout until it settles (bounded) and flushes deferred dispatcher work such as template application.</summary>
     private static void LayoutPasses(Window window)
@@ -167,11 +164,6 @@ internal sealed class XamlRenderer
         var size = window.ClientSize;
         var width = Math.Max(1, Math.Ceiling(size.Width * scale));
         var height = Math.Max(1, Math.Ceiling(size.Height * scale));
-        if (width * height * 4 > Array.MaxLength)
-        {
-            throw new InvalidOperationException($"The form is too large to draw ({size.Width:F0}×{size.Height:F0}).");
-        }
-
         var pixelSize = new PixelSize((int)width, (int)height);
 
         using var bitmap = new RenderTargetBitmap(pixelSize, new Vector(96 * scale, 96 * scale));
@@ -207,7 +199,6 @@ internal sealed class XamlRenderer
         }
 
         _previousWindow = null;
-        CurrentWindow = null;
         CurrentRoot = null;
     }
 
@@ -219,7 +210,6 @@ internal sealed class XamlRenderer
         }
 
         _previousWindow = window;
-        CurrentWindow = window;
         CurrentRoot = root;
     }
 

@@ -45,9 +45,7 @@ public sealed partial class ShellViewModel
     {
         if (!File.Exists(path))
         {
-            Settings.RemoveRecent(path);
-            SaveSettings();
-            RecentChanged?.Invoke(this, EventArgs.Empty);
+            ChangeRecent(s => s.RemoveRecent(path));
             RaiseNotify(NotifyKind.Warning, $"{Path.GetFileName(path)} isn't there any more, so it was taken off the recent list.");
             return;
         }
@@ -55,9 +53,20 @@ public sealed partial class ShellViewModel
         await OpenAnyAsync(path);
     }
 
-    private void Remember(string path)
+    private void Remember(string path) => ChangeRecent(s => s.AddRecent(path));
+
+    /// <summary>
+    /// Changes the recent list as the settings file has it now: another running designer may have added to it since this
+    /// one loaded it, and saving this one's copy would drop those entries (review L20).
+    /// </summary>
+    public void ChangeRecent(Action<DesignerSettings> change)
     {
-        Settings.AddRecent(path);
+        if (_settingsStore.ReadRecent() is { } current)
+        {
+            Settings.Recent = current;
+        }
+
+        change(Settings);
         SaveSettings();
         RecentChanged?.Invoke(this, EventArgs.Empty);
     }

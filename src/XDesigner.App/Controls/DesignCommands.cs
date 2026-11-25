@@ -33,6 +33,10 @@ public static class DesignCommands
     [
         ("Grid", ""), ("StackPanel", ""), ("Border", ""), ("Canvas", ""), ("DockPanel", ""),
         ("WrapPanel", ""), ("ScrollViewer", ""),
+
+        // .NET MAUI's: only those the framework has are offered (review L10).
+        ("VerticalStackLayout", ""), ("HorizontalStackLayout", ""), ("AbsoluteLayout", ""), ("FlexLayout", ""),
+        ("ScrollView", ""),
     ];
 
     /// <summary>The menu for <paramref name="id"/> (which the caller has made part of the selection).</summary>

@@ -7,7 +7,7 @@ namespace XDesigner.Core.Tests;
 
 public class UndoTests
 {
-    private static readonly XNamespace Av = XamlNamespaces.Avalonia;
+    private static readonly XNamespace Av = Frameworks.FrameworkProfile.AvaloniaNamespace;
 
     private const string Source =
         "<Window xmlns=\"https://github.com/avaloniaui\"\r\n" +
@@ -104,7 +104,7 @@ public class UndoTests
 
         undo.Execute(new SetAttributeCommand(button, "Content", "Changed"));
         undo.Execute(new SetAttributeCommand(button, "Content", null));          // remove a middle attribute
-        undo.Execute(new SetAttributeCommand(doc.Root.Id, XName.Get("Class", XamlNamespaces.Xaml), null));
+        undo.Execute(new SetAttributeCommand(doc.Root.Id, XName.Get("Class", Frameworks.FrameworkProfile.Xaml2006Namespace), null));
         undo.Execute(new SetAttributeCommand(doc.Root.Id, XNamespace.Xmlns + "local", "using:App"));
 
         undo.Undo();
@@ -234,7 +234,7 @@ public class EmptiedContainerTests
         var undo = new UndoManager(doc);
         var canvas = doc.AllNodes.Single(n => n.TypeName == "Canvas");
 
-        undo.Execute(new InsertElementCommand(canvas.Id, new XElement((XNamespace)XamlNamespaces.Avalonia + "Button"), 0, "Add"));
+        undo.Execute(new InsertElementCommand(canvas.Id, new XElement((XNamespace)Frameworks.FrameworkProfile.AvaloniaNamespace + "Button"), 0, "Add"));
         var button = doc.AllNodes.Single(n => n.TypeName == "Button");
         undo.Execute(new RemoveElementCommand(button.Id));
 

@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using XDesigner.Protocol;
+using XDesigner.Protocol.Rendering;
 
 namespace XDesigner.Core.Xaml;
 
@@ -33,7 +34,7 @@ public static class RenderCopyBuilder
     {
         var copy = new XDocument(source);
         var root = copy.Root ?? throw new ArgumentException("The XAML document has no root element.", nameof(source));
-        root.SetAttributeValue(XNamespace.Xmlns + "dsn", ProtocolInfo.DesignIdXmlNamespace);
+        root.SetAttributeValue(XNamespace.Xmlns + root.FreePrefix("dsn"), ProtocolInfo.DesignIdXmlNamespace); // never a prefix the file uses (review L4)
 
         // A file that leaves its namespaces implicit (MAUI 11, §5.3) gets them written out: the runtime loader needs them.
         if (source.Annotation<ImplicitNamespaces>() is { } implicitNamespaces)
@@ -68,13 +69,19 @@ public static class RenderCopyBuilder
     }
 
     /// <summary>
-    /// The root element's text, preceded by as many line breaks as there were lines before it in the file, so the
-    /// loader's error line numbers match the file even when it starts with a declaration or comments (§8.5).
+    /// The copy's text with every element and attribute on its line in the file (<see cref="LineKeepingXml"/>), so the
+    /// loader's error line numbers match the file (§8.5), whatever precedes the root and however tags are wrapped.
     /// </summary>
     public static string WithRootOnItsLine(XElement original, XElement root)
     {
-        var line = original is System.Xml.IXmlLineInfo info && info.HasLineInfo() ? info.LineNumber : 1;
-        return new string('\n', Math.Max(0, line - 1)) + root.ToString(SaveOptions.DisableFormatting);
+        // A copy has no line info of its own: take each node's from the element it was copied from.
+        var originals = root.DescendantsAndSelf().Zip(original.DescendantsAndSelf()).ToDictionary(p => p.First, p => p.Second);
+        return LineKeepingXml.Write(root, node => node switch
+        {
+            XElement e when originals.TryGetValue(e, out var from) => LineKeepingXml.LineInfo(from),
+            XAttribute { Parent: { } owner } a when originals.TryGetValue(owner, out var from) && from.Attribute(a.Name) is { } was => LineKeepingXml.LineInfo(was),
+            _ => null,
+        });
     }
 
     /// <summary>

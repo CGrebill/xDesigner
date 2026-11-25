@@ -135,7 +135,8 @@ internal static class FrameCapture
     /// </summary>
     private static async Task<List<UIElement>> WaitForImagesAsync(DependencyObject root)
     {
-        var pending = new List<Task>();
+        var pending = new List<(Uri Uri, Task Done)>();
+        var unsubscribe = new List<Action>();
         var showing = new List<UIElement>();
         foreach (var element in SelfAndDescendants(root))
         {
@@ -145,6 +146,7 @@ internal static class FrameCapture
                 Border { Background: ImageBrush brush } => brush.ImageSource,
                 Panel { Background: ImageBrush brush } => brush.ImageSource,
                 Control { Background: ImageBrush brush } => brush.ImageSource,
+                Microsoft.UI.Xaml.Shapes.Shape { Fill: ImageBrush brush } => brush.ImageSource,
                 _ => null,
             };
             if (source is not null)
@@ -152,27 +154,69 @@ internal static class FrameCapture
                 showing.Add((UIElement)element);
             }
 
-            if (source is BitmapImage { UriSource: not null, PixelWidth: 0 } bitmap)
+            // Handlers come off again: shared images (App resources) would otherwise gather one per render (review L36).
+            if (source is BitmapImage { UriSource: { } uri, PixelWidth: 0 } bitmap && !Unavailable.Contains(uri))
             {
                 var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                bitmap.ImageOpened += (_, _) => loaded.TrySetResult();
-                bitmap.ImageFailed += (_, _) => loaded.TrySetResult();
-                pending.Add(loaded.Task);
+                RoutedEventHandler opened = (_, _) => loaded.TrySetResult();
+                ExceptionRoutedEventHandler failed = (_, _) =>
+                {
+                    Unavailable.Add(uri);
+                    loaded.TrySetResult();
+                };
+                bitmap.ImageOpened += opened;
+                bitmap.ImageFailed += failed;
+                unsubscribe.Add(() =>
+                {
+                    bitmap.ImageOpened -= opened;
+                    bitmap.ImageFailed -= failed;
+                });
+                pending.Add((uri, loaded.Task));
+            }
+            else if (source is SvgImageSource { UriSource: { } svgUri } svg && !Unavailable.Contains(svgUri))
+            {
+                var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                Windows.Foundation.TypedEventHandler<SvgImageSource, SvgImageSourceOpenedEventArgs> opened = (_, _) => loaded.TrySetResult();
+                Windows.Foundation.TypedEventHandler<SvgImageSource, SvgImageSourceFailedEventArgs> failed = (_, _) =>
+                {
+                    Unavailable.Add(svgUri);
+                    loaded.TrySetResult();
+                };
+                svg.Opened += opened;
+                svg.OpenFailed += failed;
+                unsubscribe.Add(() =>
+                {
+                    svg.Opened -= opened;
+                    svg.OpenFailed -= failed;
+                });
+                pending.Add((svgUri, loaded.Task));
             }
         }
 
-        if (pending.Count > 0)
+        try
         {
-            try
+            if (pending.Count > 0)
             {
-                await Task.WhenAll(pending).WaitAsync(ImageWait);
+                await Task.WhenAll(pending.Select(p => p.Done)).WaitAsync(ImageWait);
             }
-            catch (TimeoutException)
+        }
+        catch (TimeoutException)
+        {
+            // Draw without the images still loading, and don't wait for them again: a missing file or an offline URL
+            // would add the whole wait to every render.
+            foreach (var (uri, done) in pending.Where(p => !p.Done.IsCompleted))
             {
-                // Draw without the images still loading.
+                Unavailable.Add(uri);
             }
+        }
+        finally
+        {
+            unsubscribe.ForEach(u => u());
         }
 
         return showing;
     }
+
+    /// <summary>Images that failed or timed out: renders don't wait for them again (for this host process, so until a build).</summary>
+    private static readonly HashSet<Uri> Unavailable = [];
 }

@@ -49,6 +49,22 @@ public sealed class SolutionModelTests : IDisposable
         Assert.Equal("App (Avalonia 11)", app.Label);
     }
 
+    /// <summary>A solution built project by project (a WinUI project needs its platform) still builds each as part of it (review L16).</summary>
+    [Fact]
+    public void ProjectByProjectSteps_CarryTheSolution()
+    {
+        var app = Project("App", "WinExe", FrameworkProfile.WinUI3);
+        app = app with { Info = app.Info with { Platform = "x64" } };
+        var library = Project("Controls", "Library", FrameworkProfile.Avalonia12);
+        var path = Path.Combine(_dir, "All.slnx");
+
+        var steps = SolutionModel.Of(path, [app, library]).BuildSteps;
+
+        Assert.Equal(2, steps.Count);
+        Assert.All(steps, s => Assert.Equal(path, s.Solution));
+        Assert.Equal("x64", steps[0].Platform);
+    }
+
     [Fact]
     public void ASingleProject_IsBuiltOnItsOwn()
     {

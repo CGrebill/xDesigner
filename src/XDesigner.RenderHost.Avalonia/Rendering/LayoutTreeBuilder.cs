@@ -94,10 +94,11 @@ internal static class LayoutTreeBuilder
     };
 
     /// <summary>
-    /// Start of each row/column plus the end of the last. A grid without definitions has one implicit
-    /// row/column spanning its full size.
+    /// Start of each row/column plus the end of the last. Avalonia's ActualHeight/ActualWidth include the RowSpacing/
+    /// ColumnSpacing after each one, so the sums are where rows start; the last edge is clamped to the grid, which the
+    /// last row's spacing would pass (review M20). A grid without definitions has one implicit row/column spanning it.
     /// </summary>
-    private static double[] Offsets(IEnumerable<double> sizes, double total)
+    internal static double[] Offsets(IEnumerable<double> sizes, double total)
     {
         var list = sizes.ToList();
         if (list.Count == 0)
@@ -111,6 +112,7 @@ internal static class LayoutTreeBuilder
             offsets[i + 1] = offsets[i] + list[i];
         }
 
+        offsets[^1] = Math.Min(offsets[^1], total);
         return offsets;
     }
 

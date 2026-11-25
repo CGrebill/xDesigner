@@ -122,6 +122,8 @@ public static class PropertyCategories
     public static bool AppliesTo(PropertyInfoDto property, ControlTypeInfo? parent, Metadata.ControlCatalog catalog) => property.OwnerName switch
     {
         _ when !property.IsAttached => true,
+        // WinUI honours Canvas.ZIndex in every panel (review L7).
+        "Canvas" when property.Name.EndsWith("ZIndex", StringComparison.Ordinal) && catalog.Profile.Family == Frameworks.FrameworkFamily.WinUI => true,
         "Grid" or "Canvas" or "DockPanel" or "AbsoluteLayout" or "FlexLayout" or "RelativePanel" => catalog.IsA(parent, property.OwnerName),
         _ => true,
     };

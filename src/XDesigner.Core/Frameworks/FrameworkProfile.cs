@@ -49,6 +49,9 @@ public sealed record FrameworkProfile
     public const string AvaloniaNamespace = "https://github.com/avaloniaui";
     public const string WinUINamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
     public const string MauiNamespace = "http://schemas.microsoft.com/dotnet/2021/maui";
+
+    /// <summary>MAUI's global namespace (MAUI 10+): MAUI's controls plus whatever the project registers for it.</summary>
+    public const string MauiGlobalNamespace = "http://schemas.microsoft.com/dotnet/maui/global";
     public const string MauiDesignNamespace = "http://schemas.microsoft.com/dotnet/2021/maui/design";
 
     public required FrameworkId Id { get; init; }
@@ -60,8 +63,8 @@ public sealed record FrameworkProfile
 
     public required int MajorVersion { get; init; }
 
-    /// <summary>Whether this release of the designer can design it (the others are recognised and explained).</summary>
-    public required bool IsSupported { get; init; }
+    /// <summary>The oldest version of that major the designer supports, when not x.0 (Avalonia 11.1: older 11s can't run on its renderer).</summary>
+    public Version? MinimumVersion { get; init; }
 
     /// <summary>The default XML namespace of the framework's controls.</summary>
     public required XNamespace DefaultNamespace { get; init; }
@@ -131,6 +134,15 @@ public sealed record FrameworkProfile
     /// <summary>How the framework spells the layout attributes placement writes (§7.1).</summary>
     public LayoutVocabulary Layout { get; init; } = LayoutVocabulary.Xaml;
 
+    /// <summary>
+    /// The corners of a four-number <c>CornerRadius</c>, in the order the framework reads them: clockwise from the top left
+    /// (Avalonia, WinUI); MAUI reads top left, top right, bottom left, bottom right.
+    /// </summary>
+    public IReadOnlyList<string> CornerNames { get; init; } = ["Top left", "Top right", "Bottom right", "Bottom left"];
+
+    /// <summary>Panels to name in messages such as "Select a panel (…)": the framework's own.</summary>
+    public string PanelExamples { get; init; } = "Grid, StackPanel, Canvas…";
+
     /// <summary>The full CLR name of a built-in control: <c>Grid</c> → <c>Avalonia.Controls.Grid</c>.</summary>
     public string BuiltIn(string name) => $"{ControlsNamespace}.{name}";
 
@@ -157,7 +169,6 @@ public sealed record FrameworkProfile
         Family = FrameworkFamily.Avalonia,
         DisplayName = "Avalonia 12",
         MajorVersion = 12,
-        IsSupported = true,
         DefaultNamespace = AvaloniaNamespace,
         XamlNamespace = Xaml2006Namespace,
         DesignNamespace = BlendDesignNamespace,
@@ -182,6 +193,7 @@ public sealed record FrameworkProfile
         Id = FrameworkId.Avalonia11,
         DisplayName = "Avalonia 11",
         MajorVersion = 11,
+        MinimumVersion = new(11, 1),
         HostFolder = "avalonia11",
         HostExecutable = "XDesigner.RenderHost.Avalonia11.exe",
         TemplateVersion = "11.3.23", // = Avalonia11Version in Directory.Packages.props; same template as Avalonia 12
@@ -193,7 +205,6 @@ public sealed record FrameworkProfile
         Family = FrameworkFamily.WinUI,
         DisplayName = "WinUI 3",
         MajorVersion = 3,
-        IsSupported = true,
         DefaultNamespace = WinUINamespace,
         XamlNamespace = Xaml2006Namespace,
         DesignNamespace = BlendDesignNamespace,
@@ -221,7 +232,6 @@ public sealed record FrameworkProfile
         Family = FrameworkFamily.Maui,
         DisplayName = ".NET MAUI 10",
         MajorVersion = 10,
-        IsSupported = true,
         DefaultNamespace = MauiNamespace,
         XamlNamespace = Xaml2009Namespace,
         DesignNamespace = MauiDesignNamespace,
@@ -242,6 +252,8 @@ public sealed record FrameworkProfile
         HiddenAttribute = ("IsVisible", "False"),
         TopLevelTypes = ["Microsoft.Maui.Controls.Page", "Microsoft.Maui.Controls.Window"],
         Layout = LayoutVocabulary.Maui,
+        CornerNames = ["Top left", "Top right", "Bottom left", "Bottom right"],
+        PanelExamples = "Grid, VerticalStackLayout, AbsoluteLayout…",
     };
 
     public static readonly FrameworkProfile Maui11 = Maui10 with
@@ -264,13 +276,13 @@ public sealed record FrameworkProfile
 
     /// <summary>
     /// The framework family a XAML document is written for, from its root's default namespace; null when it isn't one
-    /// the designer knows (a WPF file, say).
+    /// the designer knows. A WPF file has WinUI's namespace, so it reads as WinUI: its project's framework (no UseWinUI) decides.
     /// </summary>
     public static FrameworkFamily? FamilyOf(XNamespace rootNamespace) => rootNamespace.NamespaceName switch
     {
         AvaloniaNamespace => FrameworkFamily.Avalonia,
         WinUINamespace => FrameworkFamily.WinUI,
-        MauiNamespace => FrameworkFamily.Maui,
+        MauiNamespace or MauiGlobalNamespace => FrameworkFamily.Maui,
         _ => null,
     };
 

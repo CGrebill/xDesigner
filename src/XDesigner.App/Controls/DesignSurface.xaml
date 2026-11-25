@@ -14,7 +14,7 @@
               BorderThickness="1" BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
               Visibility="Collapsed">
         <StackPanel>
-          <!-- Avalonia doesn't draw native window decorations headless, so a Window gets a stand-in title bar. -->
+          <!-- Renderers draw a Window's content only (no native decorations off-screen), so a Window gets a stand-in title bar. -->
           <Grid x:Name="TitleBar" Height="32" Padding="10,0,0,0" PointerPressed="TitleBar_PointerPressed" DoubleTapped="TitleBar_DoubleTapped"
                 Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" Visibility="Collapsed">
             <Grid.ColumnDefinitions>

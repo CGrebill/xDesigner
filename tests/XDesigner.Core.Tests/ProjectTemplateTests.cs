@@ -72,9 +72,9 @@ public sealed class ProjectTemplateTests : IDisposable
         }
 
         var window = XamlDocument.Load(Path.Combine(dir, "MainWindow.axaml"));
-        Assert.Equal("My_App.MainWindow", (string?)window.Root.Element.Attribute(System.Xml.Linq.XName.Get("Class", XamlNamespaces.Xaml)));
+        Assert.Equal("My_App.MainWindow", (string?)window.Root.Element.Attribute(System.Xml.Linq.XName.Get("Class", Frameworks.FrameworkProfile.Xaml2006Namespace)));
         Assert.Equal("My <First> App", (string?)window.Root.Element.Attribute("Title"));
-        Assert.Contains($"Version=\"{ProjectTemplates.AvaloniaVersion}\"", File.ReadAllText(project));
+        Assert.Contains($"Version=\"{Frameworks.FrameworkProfile.Avalonia12.TemplateVersion}\"", File.ReadAllText(project));
         Assert.Contains("namespace My_App;", File.ReadAllText(Path.Combine(dir, "App.axaml.cs")));
 
         Assert.Throws<ProjectException>(() => ProjectTemplates.CreateApp(_dir, "My-App", "again")); // folder not empty
@@ -107,6 +107,8 @@ public sealed class ProjectTemplateTests : IDisposable
         Assert.NotNull(ProjectTemplates.ValidateItemName(views, "class"));
         Assert.Contains("derive from itself", ProjectTemplates.ValidateItemName(views, "Window"));
         Assert.Contains("derive from itself", ProjectTemplates.ValidateItemName(views, "UserControl"));
+        Assert.Contains("startup code", ProjectTemplates.ValidateItemName(views, "Program")); // review L8
+        Assert.Contains("startup code", ProjectTemplates.ValidateItemName(views, "MauiProgram"));
         Assert.Contains("x:Class=\"Shop.App.Settings\"", File.ReadAllText(ProjectTemplates.CreateItem(info, _dir, "Settings", ItemKind.Window)));
     }
 

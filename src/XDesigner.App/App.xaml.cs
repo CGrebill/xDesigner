@@ -69,13 +69,14 @@ public partial class App : Application
         _mainWindow.Closed += async (_, _) =>
         {
             shell.StopRun(); // an app started with Run doesn't outlive the designer
+            shell.CancelBuild(); // nor does a dotnet build it started (review L23)
             await _renderHosts.DisposeAsync();
             _runningMutex?.Dispose();
         };
         _mainWindow.Activate();
         _windowShown = true;
 
-        var installed = Core.Frameworks.FrameworkProfile.All.Where(p => p.IsSupported && _renderHosts.IsInstalled(p)).ToList();
+        var installed = Core.Frameworks.FrameworkProfile.All.Where(_renderHosts.IsInstalled).ToList();
         shell.AppendLog(installed.Count > 0
             ? $"Renderers installed: {string.Join(", ", installed.Select(p => p.DisplayName))}."
             : $"No renderer is installed in {RenderHostManager.DefaultHostsDirectory}. Reinstall xDesigner, or rebuild the solution.");

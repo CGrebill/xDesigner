@@ -31,7 +31,7 @@ public class PlacementEdgeCaseTests
         public string? A(string name, string attribute) => (string?)El(name).Attribute(attribute);
 
         public string[] Order(string panel) =>
-            El(panel).Elements().Select(e => (string?)e.Attribute(XName.Get("Name", XamlNamespaces.Xaml)) ?? "?").ToArray();
+            El(panel).Elements().Select(e => (string?)e.Attribute(XName.Get("Name", Frameworks.FrameworkProfile.Xaml2006Namespace)) ?? "?").ToArray();
 
         public void UndoAll(string original)
         {

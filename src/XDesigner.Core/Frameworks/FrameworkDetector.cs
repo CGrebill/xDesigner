@@ -17,21 +17,22 @@ public sealed record DetectedFramework(FrameworkFamily? Family, Version? Version
     {
         { Family: null } => $"{projectName} doesn't use a UI framework the designer knows (Avalonia, WinUI 3 or .NET MAUI).",
         { Profile: null } => $"{projectName} uses {FamilyName(Family.Value)}{(Version is { } v ? $" {v.Major}.{v.Minor}" : "")}. The designer supports {Supported()}.",
-        { Profile.IsSupported: false } => $"{projectName} is a {Profile.DisplayName} project. Designing {Profile.DisplayName} is coming in a later version of xDesigner.",
         _ => null,
     };
 
-    /// <summary>The supported versions, by framework: <c>Avalonia 11 and 12, WinUI 3 and .NET MAUI 10 and 11</c>.</summary>
+    /// <summary>The supported versions, by framework: <c>Avalonia 11.1+ and 12, WinUI 3 and .NET MAUI 10 and 11</c>.</summary>
     internal static string Supported()
     {
-        var groups = FrameworkProfile.All.Where(p => p.IsSupported)
+        static string Version(FrameworkProfile p) => p.MinimumVersion is { Minor: > 0 } min ? $"{min.Major}.{min.Minor}+" : p.MajorVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var groups = FrameworkProfile.All
             .GroupBy(p => p.Family)
-            .Select(g => $"{FamilyName(g.Key)} {string.Join(" and ", g.Select(p => p.MajorVersion).Order())}")
+            .Select(g => $"{FamilyName(g.Key)} {string.Join(" and ", g.OrderBy(p => p.MajorVersion).Select(Version))}")
             .ToList();
         return groups.Count <= 1 ? string.Concat(groups) : $"{string.Join(", ", groups.SkipLast(1))} and {groups[^1]}";
     }
 
-    private static string FamilyName(FrameworkFamily family) => family switch
+    /// <summary>A framework family as people name it (".NET MAUI").</summary>
+    public static string FamilyName(FrameworkFamily family) => family switch
     {
         FrameworkFamily.Maui => ".NET MAUI",
         _ => family.ToString(),
@@ -121,8 +122,48 @@ public static class FrameworkDetector
         return FromProjectFile(projectPath);
     }
 
+    /// <summary>
+    /// An opened project's framework: its build output's answer when it has been built, else MSBuild's evaluation (which
+    /// sees <c>Directory.Build.props</c> and central package versions, review M6). A build carrying the Windows App SDK is
+    /// WinUI only when the project says <c>UseWinUI</c>: a WPF app may use the SDK's notifications (review M8).
+    /// </summary>
+    public static DetectedFramework Detect(Project.ProjectInfo project)
+    {
+        var evaluated = project.PackageVersions is not null ? FromEvaluation(project) : FromProjectFile(project.ProjectPath);
+        if (project.TargetPath is { Length: > 0 } path && File.Exists(path) && FromBuildOutput(path) is { Family: not null } built
+            && !(built.Family == FrameworkFamily.WinUI && project.PackageVersions is not null && !project.UseWinUI))
+        {
+            return built;
+        }
+
+        return evaluated;
+    }
+
+    /// <summary>From MSBuild's evaluation, before a build: <c>UseMaui</c>, <c>UseWinUI</c>, the Avalonia package's version.</summary>
+    public static DetectedFramework FromEvaluation(Project.ProjectInfo project)
+    {
+        var packages = project.PackageVersions ?? new Dictionary<string, string>();
+        if (project.UseMaui)
+        {
+            var version = (packages.TryGetValue("Microsoft.Maui.Controls", out var maui) ? ParseVersion(maui) : null)
+                ?? (TfmMajor(project.TargetFramework) is var major and > 0 ? new Version(major, 0) : null);
+            return version is not null ? Detected(FrameworkFamily.Maui, version) : new DetectedFramework(FrameworkFamily.Maui, null, null);
+        }
+
+        if (project.UseWinUI)
+        {
+            var sdk = packages.TryGetValue("Microsoft.WindowsAppSDK", out var s) ? ParseVersion(s) : null;
+            return new DetectedFramework(FrameworkFamily.WinUI, sdk, FrameworkProfile.WinUI3);
+        }
+
+        return packages.TryGetValue("Avalonia", out var avalonia)
+            ? ParseVersion(avalonia) is { } v ? Detected(FrameworkFamily.Avalonia, v) : new DetectedFramework(FrameworkFamily.Avalonia, null, null)
+            : DetectedFramework.Unknown;
+    }
+
+    /// <summary>The profile for that version; none below the profile's minimum (Avalonia 11.0, review L55).</summary>
     private static DetectedFramework Detected(FrameworkFamily family, Version version) =>
-        new(family, version, FrameworkProfile.For(family, version.Major));
+        new(family, version, FrameworkProfile.For(family, version.Major) is { } profile && (profile.MinimumVersion is not { } min || version >= min) ? profile : null);
 
     /// <summary>
     /// The Avalonia version a built project uses: <c>Avalonia.Base.dll</c> in the output folder (apps), else the

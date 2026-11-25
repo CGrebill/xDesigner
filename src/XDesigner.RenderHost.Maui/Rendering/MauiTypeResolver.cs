@@ -28,7 +28,20 @@ internal sealed class MauiTypeResolver
         return _xmlnsMap.TryGetValue(xmlNamespace, out var targets) && targets.Any(t => t.Assembly == type.Assembly && t.ClrNamespace == type.Namespace);
     }
 
-    private Type? ResolveCore(string xmlNamespace, string localName)
+    /// <summary>MAUI's global namespace (MAUI 10+): an aggregate of other XML namespaces, MAUI's own among them.</summary>
+    public const string GlobalNamespace = "http://schemas.microsoft.com/dotnet/maui/global";
+
+    /// <summary>
+    /// The names MAUI's XAML loader tries for an element: as written, with the <c>Extension</c> suffix (<c>StaticResource</c>
+    /// is <c>StaticResourceExtension</c>), and generic (<c>OnPlatform x:TypeArguments="…"</c> is <c>OnPlatform`1</c>).
+    /// </summary>
+    private Type? ResolveCore(string xmlNamespace, string localName) =>
+        ResolveExact(xmlNamespace, localName)
+        ?? ResolveExact(xmlNamespace, localName + "Extension")
+        ?? ResolveExact(xmlNamespace, localName + "`1")
+        ?? ResolveExact(xmlNamespace, localName + "`2");
+
+    private Type? ResolveExact(string xmlNamespace, string localName)
     {
         if (xmlNamespace.StartsWith("using:", StringComparison.Ordinal))
         {
@@ -44,8 +57,12 @@ internal sealed class MauiTypeResolver
                 return FindInAllAssemblies(parts[0], localName);
             }
 
-            return AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == assemblyName)?
-                .GetType($"{parts[0]}.{localName}", throwOnError: false);
+            return LoadedOrLoad(assemblyName)?.GetType($"{parts[0]}.{localName}", throwOnError: false);
+        }
+
+        if (!_xmlnsMap.ContainsKey(xmlNamespace) && xmlNamespace == GlobalNamespace)
+        {
+            xmlNamespace = MauiNamespace; // no project registers more: the global namespace is MAUI's own
         }
 
         if (_xmlnsMap.TryGetValue(xmlNamespace, out var targets))
@@ -86,6 +103,27 @@ internal sealed class MauiTypeResolver
         }
 
         return AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic).FirstOrDefault(a => Has(a, clrNamespace))?.GetName().Name;
+    }
+
+    /// <summary>
+    /// The loaded assembly of that name, else loaded now from the app folder (the shadow copy of the project's output): a
+    /// library nothing has used yet is loaded only when the XAML loader first meets it, after the sanitizer has run.
+    /// </summary>
+    private static Assembly? LoadedOrLoad(string assemblyName)
+    {
+        if (AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == assemblyName) is { } loaded)
+        {
+            return loaded;
+        }
+
+        try
+        {
+            return Assembly.Load(new AssemblyName(assemblyName));
+        }
+        catch (Exception ex) when (ex is IOException or BadImageFormatException or ArgumentException)
+        {
+            return null;
+        }
     }
 
     private static Type? FindInAllAssemblies(string clrNamespace, string localName)
@@ -140,6 +178,21 @@ internal sealed class MauiTypeResolver
                     }
 
                     list.Add((targetAssembly, clrNamespace));
+                }
+            }
+        }
+
+        // A definition whose "CLR namespace" is itself an XML namespace aggregates that namespace (MAUI's global one:
+        // XmlnsDefinition(".../maui/global", ".../2021/maui")): it resolves to everything that namespace maps to.
+        foreach (var (xmlNamespace, list) in map)
+        {
+            var aggregated = list.Where(t => t.Item2.Contains("://", StringComparison.Ordinal)).Select(t => t.Item2).Distinct().ToList();
+            list.RemoveAll(t => t.Item2.Contains("://", StringComparison.Ordinal));
+            foreach (var other in aggregated.Where(o => o != xmlNamespace))
+            {
+                if (map.TryGetValue(other, out var targets))
+                {
+                    list.AddRange(targets.Where(t => !t.Item2.Contains("://", StringComparison.Ordinal)));
                 }
             }
         }

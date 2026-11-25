@@ -3,6 +3,7 @@ using System.Xml.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Markup;
+using XDesigner.Protocol.Rendering;
 using XDesigner.RenderHost.Server;
 
 namespace XDesigner.RenderHost.Hosting;
@@ -79,7 +80,7 @@ internal sealed partial class HostApp : Application, IXamlMetadataProvider
 
     public XmlnsDefinition[] GetXmlnsDefinitions() => _providers.SelectMany(p => p.GetXmlnsDefinitions()).ToArray();
 
-    /// <inheritdoc cref="RenderSurface.InvokeAsync{T}(Func{T})"/>
+    /// <summary>Runs <paramref name="work"/> on the UI thread, after the work queued before it (<see cref="RenderSurface.InvokeTaskAsync{T}"/>).</summary>
     public Task<T> InvokeAsync<T>(Func<T> work) => InvokeTaskAsync(() => Task.FromResult(work()));
 
     /// <inheritdoc cref="RenderSurface.InvokeTaskAsync{T}(Func{Task{T}})"/>
@@ -135,11 +136,15 @@ internal sealed partial class HostApp : Application, IXamlMetadataProvider
             _warnings.Add("The renderer's own XAML type information is missing; selection and layout will not work.");
         }
 
-        Resources.MergedDictionaries.Add(new XamlControlsResources());
+        _controlsResources = new XamlControlsResources();
+        Resources.MergedDictionaries.Add(_controlsResources);
 
-        if (_options.UserAssemblyPath is { } assemblyPath)
+        // --no-user-app (after the project's code failed or hung at startup) leaves the project's assembly out altogether: its
+        // XAML metadata provider is what runs the project's code here (review L37), and built-in controls still render.
+        if (_options.UserAssemblyPath is { } assemblyPath && !_options.NoUserApp)
         {
             UserAssembly = Assembly.LoadFrom(assemblyPath);
+            LoadLibraries(UserAssembly);
             if (FindProvider(UserAssembly) is { } user)
             {
                 _providers.Add(user);
@@ -156,6 +161,28 @@ internal sealed partial class HostApp : Application, IXamlMetadataProvider
         }
 
         _surface = await RenderSurface.CreateAsync();
+    }
+
+    /// <summary>
+    /// The project's own libraries in the app folder, loaded now: one nothing has used yet would load only when XamlReader
+    /// meets it, after the sanitizer looked for its types, and its controls would be missing from the toolbox (review M24).
+    /// </summary>
+    private static void LoadLibraries(Assembly userAssembly)
+    {
+        foreach (var reference in userAssembly.GetReferencedAssemblies())
+        {
+            if (File.Exists(Path.Combine(AppContext.BaseDirectory, reference.Name + ".dll")))
+            {
+                try
+                {
+                    Assembly.Load(reference);
+                }
+                catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or BadImageFormatException)
+                {
+                    Console.Error.WriteLine($"Couldn't load {reference.Name}: {ex.Message}");
+                }
+            }
+        }
     }
 
     /// <summary>The generated XAML metadata provider of an assembly (not its App class, which also implements the interface).</summary>
@@ -192,13 +219,28 @@ internal sealed partial class HostApp : Application, IXamlMetadataProvider
         try
         {
             var document = XDocument.Load(appXamlPath);
-            var resources = document.Root?.Elements().FirstOrDefault(e => e.Name.LocalName == "Application.Resources")?.Elements().FirstOrDefault();
-            if (resources is null)
+            var app = document.Root!;
+
+            // The app's own theme is what "Default" previews in (review M26): the host's Application follows the system.
+            UserRequestedTheme = (string?)app.Attribute("RequestedTheme") switch
+            {
+                "Light" => ThemeVariantKind.Light,
+                "Dark" => ThemeVariantKind.Dark,
+                _ => null,
+            };
+
+            var holder = app.Elements().FirstOrDefault(e => e.Name.LocalName == "Application.Resources");
+            if (holder is null)
             {
                 return;
             }
 
-            foreach (var declaration in document.Root!.Attributes().Where(a => a.IsNamespaceDeclaration || a.Name.LocalName == "Ignorable"))
+            // One ResourceDictionary, or (the implicit form) the resources written straight in: wrapped in one (review L38).
+            var children = holder.Elements().ToList();
+            var resources = children is [{ Name.LocalName: "ResourceDictionary" } single]
+                ? single
+                : new XElement(XName.Get("ResourceDictionary", PresentationNamespace), children.Select(c => new XElement(c)));
+            foreach (var declaration in app.Attributes().Where(a => a.IsNamespaceDeclaration || a.Name.LocalName == "Ignorable"))
             {
                 if (resources.Attribute(declaration.Name) is null)
                 {
@@ -206,8 +248,11 @@ internal sealed partial class HostApp : Application, IXamlMetadataProvider
                 }
             }
 
+            // The controls library is merged already: the project's copy goes, but its settings (ControlsResourcesVersion)
+            // apply to the merged one.
             foreach (var controls in resources.DescendantsAndSelf().Where(e => e.Name.LocalName == "XamlControlsResources").ToList())
             {
+                ApplySettings(controls, _controlsResources);
                 controls.Remove();
             }
 
@@ -220,6 +265,47 @@ internal sealed partial class HostApp : Application, IXamlMetadataProvider
         catch (Exception ex)
         {
             _warnings.Add($"The project's App.xaml resources could not be loaded, so documents use the default theme: {FirstLine(ex.Message)}");
+        }
+    }
+
+    private const string PresentationNamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+
+    private XamlControlsResources? _controlsResources;
+
+    /// <summary>The project folder (<c>--project</c>): App.xaml and the strings are read there.</summary>
+    public string? ProjectDirectory => _options.ProjectDirectory;
+
+    /// <summary>The <c>RequestedTheme</c> of the project's App.xaml, if it sets one.</summary>
+    public ThemeVariantKind? UserRequestedTheme { get; private set; }
+
+    /// <summary>Sets the attributes written on the project's XamlControlsResources (enums and flags) on the host's.</summary>
+    private void ApplySettings(XElement element, XamlControlsResources? target)
+    {
+        if (target is null)
+        {
+            return;
+        }
+
+        foreach (var attribute in element.Attributes().Where(a => !a.IsNamespaceDeclaration && a.Name.Namespace == XNamespace.None))
+        {
+            if (typeof(XamlControlsResources).GetProperty(attribute.Name.LocalName) is { CanWrite: true } property)
+            {
+                try
+                {
+                    object? value = property.PropertyType.IsEnum ? Enum.Parse(property.PropertyType, attribute.Value, ignoreCase: true)
+                        : property.PropertyType == typeof(bool) ? bool.Parse(attribute.Value)
+                        : property.PropertyType == typeof(string) ? attribute.Value
+                        : null;
+                    if (value is not null)
+                    {
+                        property.SetValue(target, value);
+                    }
+                }
+                catch (Exception ex) when (ex is ArgumentException or FormatException or TargetInvocationException)
+                {
+                    _warnings.Add($"App.xaml's XamlControlsResources {attribute.Name.LocalName}=\"{attribute.Value}\" couldn't be applied: {FirstLine(ex.Message)}");
+                }
+            }
         }
     }
 

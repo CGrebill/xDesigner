@@ -98,8 +98,8 @@ public sealed class ProjectTests : IDisposable
         var target = Write(@"bin\Lib.dll", "");
         Write(@"bin\Lib.deps.json", """{ "libraries": { "Lib/1.0.0": {}, "Avalonia/11.2.3": { "type": "package" } } }""");
 
-        Assert.Equal(new Version(11, 2, 3), ProjectReader.AvaloniaVersionOf(target));
-        Assert.Null(ProjectReader.AvaloniaVersionOf(Path.Combine(_dir, "nothing", "X.dll")));
+        Assert.Equal(new Version(11, 2, 3), Frameworks.FrameworkDetector.AvaloniaVersion(target));
+        Assert.Null(Frameworks.FrameworkDetector.AvaloniaVersion(Path.Combine(_dir, "nothing", "X.dll")));
     }
 
     /// <summary>Evaluates the real sample project with MSBuild (needs the dotnet SDK, takes a few seconds).</summary>
@@ -122,7 +122,7 @@ public sealed class ProjectTests : IDisposable
         // The evaluated TargetPath is the Debug build; a Release-only build of the solution (CI) has just the Release one.
         var built = Directory.GetFiles(Path.Combine(project.Directory, "bin"), "SampleAvaloniaApp.dll", SearchOption.AllDirectories);
         Assert.NotEmpty(built);
-        Assert.Equal(12, ProjectReader.AvaloniaVersionOf(built[0])?.Major);
+        Assert.Equal(12, Frameworks.FrameworkDetector.AvaloniaVersion(built[0])?.Major);
         Assert.True(project.Contains(Path.Combine(project.Directory, "MainWindow.axaml")));
     }
 }

@@ -6,7 +6,7 @@ namespace XDesigner.Core.Project;
 public sealed record SolutionProject(ProjectInfo Info, DetectedFramework Framework, IReadOnlyList<string> XamlFiles)
 {
     /// <summary>Has XAML files in a framework this version of the designer can render.</summary>
-    public bool IsDesignable => XamlFiles.Count > 0 && Framework.Profile is { IsSupported: true };
+    public bool IsDesignable => XamlFiles.Count > 0 && Framework.Profile is not null;
 
     /// <summary>An application (something Run can start), not a library.</summary>
     public bool IsApp => Info.OutputType is "WinExe" or "Exe";
@@ -17,7 +17,7 @@ public sealed record SolutionProject(ProjectInfo Info, DetectedFramework Framewo
 
 /// <summary>
 /// What the designer has open (§11.1): a solution and all its projects, or one project on its own. Every project keeps
-/// its own framework, so a solution may mix Avalonia 11 and 12 (and later WinUI and MAUI) projects; each gets its own
+/// its own framework, so a solution may mix Avalonia 11 and 12, WinUI and MAUI projects; each gets its own
 /// renderer.
 /// </summary>
 public sealed class SolutionModel
@@ -44,7 +44,7 @@ public sealed class SolutionModel
     /// </summary>
     public IReadOnlyList<BuildStep> BuildSteps =>
         SolutionPath is not null && Projects.Any(p => p.Info.Platform is not null || p.Info.BuildFramework is not null)
-            ? Projects.Select(p => new BuildStep(p.Info.ProjectPath, p.Info.Platform, p.Info.BuildFramework)).ToList()
+            ? Projects.Select(p => new BuildStep(p.Info.ProjectPath, p.Info.Platform, p.Info.BuildFramework, SolutionPath)).ToList()
             : [SolutionPath is null ? new BuildStep(BuildTarget, Projects[0].Info.Platform, Projects[0].Info.BuildFramework) : new BuildStep(BuildTarget, null)];
 
     public IEnumerable<SolutionProject> DesignableProjects => Projects.Where(p => p.IsDesignable);

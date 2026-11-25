@@ -44,6 +44,8 @@ internal sealed class MauiSanitizer(MauiTypeResolver resolver, System.Reflection
         RemoveIgnorable(root, ignorable);
         MapDesignIds(document);
         AddAssemblies(document);
+        ResolveGlobalNamespace(document);
+
         root.Attribute(Xaml2009 + "Class")?.Remove();
         root.Attribute(Xaml2006 + "Class")?.Remove();
 
@@ -63,6 +65,9 @@ internal sealed class MauiSanitizer(MauiTypeResolver resolver, System.Reflection
             var type = resolver.Resolve(element.Name.NamespaceName, element.Name.LocalName);
             if (type is null)
             {
+                // Unknown here (MAUI may still know it): a design id on a non-visual element fails the whole page, a
+                // missing one only makes that element unselectable.
+                element.Attribute(DesignIdAttribute)?.Remove();
                 continue;
             }
 
@@ -78,12 +83,12 @@ internal sealed class MauiSanitizer(MauiTypeResolver resolver, System.Reflection
         }
 
         var rootType = resolver.Resolve(root.Name.NamespaceName, root.Name.LocalName);
-        var line = root is System.Xml.IXmlLineInfo info && info.HasLineInfo() ? info.LineNumber : 1;
-        return new SanitizedMauiXaml(new string('\n', Math.Max(0, line - 1)) + root.ToString(SaveOptions.DisableFormatting), rootType, designWidth, designHeight);
+        // Every element and attribute stays on its line, so error lines match the file (§8.5).
+        return new SanitizedMauiXaml(XDesigner.Protocol.Rendering.LineKeepingXml.Write(root), rootType, designWidth, designHeight);
     }
 
     /// <summary>Parses the copy; a root without a namespace (MAUI 11's implicit ones) gets MAUI's default and <c>x:</c> namespaces.</summary>
-    private static XDocument ParseWithImplicitNamespaces(string xaml)
+    internal static XDocument ParseWithImplicitNamespaces(string xaml)
     {
         const LoadOptions options = LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo;
         try
@@ -158,6 +163,47 @@ internal sealed class MauiSanitizer(MauiTypeResolver resolver, System.Reflection
     /// Gives <c>clr-namespace:</c> declarations without an assembly the one the namespace is in (the project's, as MAUI's
     /// compiler assumes; the runtime loader would look in MAUI's).
     /// </summary>
+    /// <summary>
+    /// Writes elements of MAUI's global namespace (MAUI 10+, an aggregate of other namespaces that the source generator
+    /// resolves at build time, but MAUI 11's runtime loader doesn't) in a namespace the loader knows: MAUI's own for its
+    /// types, <c>clr-namespace:…;assembly=…</c> for the project's (review M15).
+    /// </summary>
+    private void ResolveGlobalNamespace(XDocument document)
+    {
+        XNamespace global = MauiTypeResolver.GlobalNamespace;
+        XNamespace maui = MauiTypeResolver.MauiNamespace;
+        static string TypeNameOf(XElement e) => e.Name.LocalName.Split('.')[0]; // Label.TextColor: Label's
+
+        // Also MAUI-namespace names MAUI doesn't have: in a file without namespaces (MAUI 11) the default namespace is
+        // really the global one, so an unprefixed project control registered for it is meant.
+        foreach (var element in document.Descendants()
+            .Where(e => e.Name.Namespace == global || (e.Name.Namespace == maui && resolver.Resolve(maui.NamespaceName, TypeNameOf(e)) is null))
+            .ToList())
+        {
+            var local = element.Name.LocalName;
+            var type = resolver.Resolve(global.NamespaceName, TypeNameOf(element));
+            element.Name = (type is null || resolver.IsMappedTo(maui.NamespaceName, type)
+                ? maui
+                : XNamespace.Get($"clr-namespace:{type.Namespace};assembly={type.Assembly.GetName().Name}")) + local;
+        }
+
+        foreach (var element in document.Descendants())
+        {
+            foreach (var attribute in element.Attributes().ToList())
+            {
+                if (attribute.IsNamespaceDeclaration && attribute.Value == global.NamespaceName)
+                {
+                    attribute.Value = maui.NamespaceName;
+                }
+                else if (attribute.Name.Namespace == global)
+                {
+                    attribute.Remove();
+                    element.SetAttributeValue(maui + attribute.Name.LocalName, attribute.Value);
+                }
+            }
+        }
+    }
+
     private void AddAssemblies(XDocument document)
     {
         foreach (var declaration in document.Descendants().SelectMany(e => e.Attributes()).Where(a => a.IsNamespaceDeclaration).ToList())

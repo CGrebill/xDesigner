@@ -27,14 +27,17 @@ public static class EventCategories
 
     private static readonly (string Category, string[] Names)[] Map =
     [
-        (Common, ["Click", "IsCheckedChanged", "TextChanged", "SelectionChanged", "ValueChanged", "SelectedDateChanged",
-            "SelectedTimeChanged", "SelectedDatesChanged", "Opened", "Closing", "Closed"]),
+        // Avalonia's first, then WinUI's and MAUI's own names for the same kinds of event.
+        (Common, ["Click", "Clicked", "IsCheckedChanged", "Checked", "Unchecked", "CheckedChanged", "Toggled", "TextChanged", "Completed",
+            "SelectionChanged", "SelectedIndexChanged", "ValueChanged", "SelectedDateChanged", "DateSelected", "DateChanged",
+            "SelectedTimeChanged", "TimeChanged", "SelectedDatesChanged", "ItemClick", "ItemTapped", "ItemSelected", "Pressed", "Released",
+            "Opened", "Closing", "Closed", "Scrolled", "RemainingItemsThresholdReached", "Refreshing"]),
         (Pointer, ["PointerPressed", "PointerReleased", "PointerMoved", "PointerEntered", "PointerExited", "PointerWheelChanged",
             "Tapped", "DoubleTapped", "Holding", "PointerCaptureLost"]),
         (Keyboard, ["KeyDown", "KeyUp", "TextInput"]),
-        (Focus, ["GotFocus", "LostFocus"]),
-        (Window, ["Activated", "Deactivated", "PositionChanged", "Resized", "ScalingChanged"]),
-        (Lifetime, ["Loaded", "Unloaded", "SizeChanged"]),
+        (Focus, ["GotFocus", "LostFocus", "Focused", "Unfocused"]),
+        (Window, ["Activated", "Deactivated", "PositionChanged", "Resized", "ScalingChanged", "VisibilityChanged", "Stopped", "Resumed"]),
+        (Lifetime, ["Loaded", "Unloaded", "SizeChanged", "Appearing", "Disappearing", "NavigatedTo", "NavigatedFrom", "NavigatingFrom"]),
     ];
 
     private static readonly HashSet<string> Advanced = new(StringComparer.Ordinal)
@@ -43,6 +46,15 @@ public static class EventCategories
         "ResourcesChanged", "ActualThemeVariantChanged", "PropertyChanged", "DataContextChanged", "Initialized",
         "EffectiveViewportChanged", "LayoutUpdated", "GettingFocus", "LosingFocus", "TextInputMethodClientRequested",
         "ContextRequested", "ContextCanceled", "AccessKeyPressed", "PointerCaptureLost",
+
+        // WinUI
+        "ActualThemeChanged", "BringIntoViewRequested", "ProcessKeyboardAccelerators", "AccessKeyDisplayRequested",
+        "AccessKeyDisplayDismissed", "AccessKeyInvoked", "NoFocusCandidateFound", "CharacterReceived", "PreviewKeyDown", "PreviewKeyUp",
+
+        // MAUI
+        "ChildAdded", "ChildRemoved", "DescendantAdded", "DescendantRemoved", "ParentChanging", "ParentChanged", "HandlerChanging",
+        "HandlerChanged", "BindingContextChanged", "PropertyChanging", "MeasureInvalidated", "BatchCommitted", "ChildrenReordered",
+        "FocusChangeRequested", "LayoutChanged",
     };
 
     private static readonly Dictionary<string, (string Category, int Order)> ByName =

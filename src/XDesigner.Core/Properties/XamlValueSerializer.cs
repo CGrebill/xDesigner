@@ -141,7 +141,7 @@ public static class XamlValueSerializer
                     return true;
                 }
 
-                problem = "Enter one number (all corners) or four (top-left, top-right, bottom-right, bottom-left).";
+                problem = "Enter one number (all corners) or four, one per corner (the … button shows their order).";
                 return false;
 
             case ValueKind.Color:

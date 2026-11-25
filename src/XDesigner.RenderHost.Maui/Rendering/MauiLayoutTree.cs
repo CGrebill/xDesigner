@@ -13,7 +13,8 @@ internal static class MauiLayoutTree
     public static ElementLayout? Build(VisualElement root)
     {
         var roots = new List<ElementLayout>();
-        Collect(root, 0, 0, true, roots, isRoot: true);
+        var rootView = root.Handler?.PlatformView as Microsoft.UI.Xaml.UIElement;
+        Collect(root, 0, 0, true, roots, rootView, isRoot: true);
         return roots.Count switch
         {
             0 => null,
@@ -22,7 +23,8 @@ internal static class MauiLayoutTree
         };
     }
 
-    private static void Collect(IVisualTreeElement element, double parentX, double parentY, bool parentVisible, List<ElementLayout> into, bool isRoot = false)
+    private static void Collect(IVisualTreeElement element, double parentX, double parentY, bool parentVisible, List<ElementLayout> into,
+        Microsoft.UI.Xaml.UIElement? rootView, bool isRoot = false)
     {
         var x = parentX;
         var y = parentY;
@@ -42,7 +44,7 @@ internal static class MauiLayoutTree
         var target = id == 0 ? into : [];
         foreach (var child in element.GetVisualChildren())
         {
-            Collect(child, x, y, visible, target);
+            Collect(child, x, y, visible, target, rootView);
         }
 
         if (id != 0 && element is VisualElement designed)
@@ -50,12 +52,34 @@ internal static class MauiLayoutTree
             into.Add(new ElementLayout(
                 id,
                 designed.GetType().FullName ?? designed.GetType().Name,
-                new RectDto(x, y, designed.Frame.Width, designed.Frame.Height),
+                RenderedBounds(designed, rootView) ?? new RectDto(x, y, designed.Frame.Width, designed.Frame.Height),
                 visible,
                 designed is View view ? ToDto(view.Margin) : ThicknessDto.Zero,
                 designed is IPadding padded ? ToDto(padded.Padding) : ThicknessDto.Zero,
                 DescribePanel(designed),
                 target.ToArray()));
+        }
+    }
+
+    /// <summary>
+    /// Where the element was drawn, from its WinUI view: Frames leave out TranslationX/Y, Scale and Rotation (review L47).
+    /// Null when it has no view connected to the root's (the Frame sum is used then).
+    /// </summary>
+    private static RectDto? RenderedBounds(VisualElement element, Microsoft.UI.Xaml.UIElement? rootView)
+    {
+        if (rootView is null || element.Handler?.PlatformView is not Microsoft.UI.Xaml.UIElement view || element.Frame.Width < 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var r = view.TransformToVisual(rootView).TransformBounds(new Windows.Foundation.Rect(0, 0, Math.Max(0, element.Frame.Width), Math.Max(0, element.Frame.Height)));
+            return new RectDto(r.X, r.Y, r.Width, r.Height);
+        }
+        catch (ArgumentException)
+        {
+            return null; // not in the root's tree (popup content)
         }
     }
 
@@ -99,8 +123,9 @@ internal static class MauiLayoutTree
             else if (lengths[i].IsAuto)
             {
                 sizes[i] = grid.Children.OfType<View>()
-                    .Where(c => (rows ? Grid.GetRow(c) : Grid.GetColumn(c)) == i && (rows ? Grid.GetRowSpan(c) : Grid.GetColumnSpan(c)) == 1)
-                    .Select(c => rows ? c.Frame.Height + c.Margin.VerticalThickness : c.Frame.Width + c.Margin.HorizontalThickness)
+                    // Hidden children take no space (their Frame is -1 until arranged; review L41).
+                    .Where(c => c.IsVisible && (rows ? Grid.GetRow(c) : Grid.GetColumn(c)) == i && (rows ? Grid.GetRowSpan(c) : Grid.GetColumnSpan(c)) == 1)
+                    .Select(c => Math.Max(0, rows ? c.Frame.Height + c.Margin.VerticalThickness : c.Frame.Width + c.Margin.HorizontalThickness))
                     .DefaultIfEmpty(0)
                     .Max();
             }

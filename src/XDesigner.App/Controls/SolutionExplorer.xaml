@@ -12,11 +12,11 @@
     </Grid.RowDefinitions>
 
     <TreeView x:Name="Tree" SelectionMode="Single" CanDragItems="False" CanReorderItems="False" AllowDrop="False"
-              KeyDown="Tree_KeyDown" RightTapped="Tree_RightTapped" Expanding="Tree_Expanding" Collapsed="Tree_Collapsed">
+              KeyDown="Tree_KeyDown" ContextRequested="Tree_ContextRequested" Expanding="Tree_Expanding" Collapsed="Tree_Collapsed">
       <TreeView.ItemTemplate>
         <DataTemplate x:DataType="vm:SolutionNodeViewModel">
           <TreeViewItem ItemsSource="{x:Bind Children}" IsExpanded="{x:Bind IsExpanded}" DoubleTapped="Item_DoubleTapped"
-                        AutomationProperties.Name="{x:Bind Label}" ToolTipService.ToolTip="{x:Bind Path}">
+                        AutomationProperties.Name="{x:Bind AccessibleName}" ToolTipService.ToolTip="{x:Bind Path}">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <FontIcon Glyph="{x:Bind Glyph}" FontSize="14" />
               <TextBlock Text="{x:Bind Label}" FontWeight="{x:Bind Weight}" />

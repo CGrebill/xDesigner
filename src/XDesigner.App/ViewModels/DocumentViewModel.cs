@@ -31,6 +31,7 @@ public sealed partial class DocumentViewModel : ObservableObject
     {
         FilePath = filePath;
         Xaml = xaml;
+        project = ForThisFramework(project);
         Project = project;
         ApplyProjectProfile(project);
         _hosts = hosts;
@@ -103,6 +104,7 @@ public sealed partial class DocumentViewModel : ObservableObject
     /// <summary>Switches to another build of the project (or none): re-renders with it and reloads the control catalog.</summary>
     public void UseProject(ProjectOutput? project)
     {
+        project = ForThisFramework(project);
         var changed = !string.Equals(project?.AssemblyPath, Project?.AssemblyPath, StringComparison.OrdinalIgnoreCase);
         Project = project;
 
@@ -112,6 +114,19 @@ public sealed partial class DocumentViewModel : ObservableObject
         {
             RendererRestarted();
         }
+    }
+
+    /// <summary>
+    /// A project of another framework than this file's (a WPF window, MAUI's WinUI <c>Platforms\Windows\App.xaml</c>):
+    /// its build can't be loaded into this file's renderer, so the file is shown with built-in controls only (review M8).
+    /// </summary>
+    public bool IsOtherFrameworksProject { get; private set; }
+
+    private ProjectOutput? ForThisFramework(ProjectOutput? project)
+    {
+        // No known framework at all (a WPF app): its build isn't for this renderer either.
+        IsOtherFrameworksProject = project is { AssemblyPath: not null } && (project.Profile is null || project.Profile.Family != Xaml.Profile.Family);
+        return IsOtherFrameworksProject ? project! with { AssemblyPath = null } : project;
     }
 
     /// <summary>
@@ -127,6 +142,17 @@ public sealed partial class DocumentViewModel : ObservableObject
         }
 
         return false;
+    }
+
+    /// <summary>Selects the element a file line is in (an Error List row): the last one that starts on or before it.</summary>
+    public void SelectAtLine(int line)
+    {
+        var node = Xaml.AllNodes.LastOrDefault(n =>
+            n.Element is System.Xml.IXmlLineInfo info && info.HasLineInfo() && info.LineNumber <= line);
+        if (node is not null)
+        {
+            Selection.Select(node.Id);
+        }
     }
 
     /// <summary>The renderer for this document was restarted (rebuild): fetch the catalog again and re-render.</summary>
@@ -173,7 +199,7 @@ public sealed partial class DocumentViewModel : ObservableObject
     /// <summary>How long one render may take before the renderer is considered stuck (§14.2).</summary>
     public static TimeSpan RenderTimeout { get; } = TimeSpan.FromSeconds(10);
 
-    /// <summary>The project folder, when the document belongs to a project (images go to its Assets folder, §12).</summary>
+    /// <summary>The project folder, when the document belongs to a project (images go to its images folder, §12).</summary>
     public string? ProjectDirectory => Project is { } p ? Path.GetDirectoryName(p.ProjectPath) : null;
 
     /// <summary>
@@ -273,7 +299,7 @@ public sealed partial class DocumentViewModel : ObservableObject
             }
         }
 
-        return "Nothing selected can hold another control. Select a panel (Grid, StackPanel, Canvas…) first.";
+        return $"Nothing selected can hold another control. Select a panel ({Xaml.Profile.PanelExamples}) first.";
     }
 
     /// <summary>Moves one element as planned for a drag (reposition, reorder or into another container).</summary>
@@ -469,7 +495,7 @@ public sealed partial class DocumentViewModel : ObservableObject
     /// <summary>Methods of the code-behind class that can handle <paramref name="evt"/> (for the Events tab's list).</summary>
     public IReadOnlyList<(string Name, int Line)> CompatibleMethods(EventInfoDto evt)
     {
-        if ((string?)Xaml.Root.Element.Attribute(System.Xml.Linq.XName.Get("Class", XamlNamespaces.Xaml)) is not { } className)
+        if ((string?)Xaml.Root.Element.Attribute(Xaml.XamlNamespace + "Class") is not { } className)
         {
             return [];
         }
@@ -512,6 +538,12 @@ public sealed partial class DocumentViewModel : ObservableObject
     /// The file's text when another program changed it since the designer last loaded or saved it; null otherwise
     /// (also when it can't be read, or no longer exists).
     /// </summary>
+    /// <summary>The file was deleted or renamed outside the designer while open, and the user was told (review L19).</summary>
+    public bool MissingOnDisk { get; set; }
+
+    /// <summary>The user chose to save a file that was deleted or renamed: saving creates it again.</summary>
+    public bool RecreateOnSave { get; set; }
+
     public string? TextChangedOnDisk()
     {
         try

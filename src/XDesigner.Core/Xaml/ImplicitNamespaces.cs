@@ -95,6 +95,38 @@ public static class XamlNamespaceExtensions
         element.GetNamespaceOfPrefix(prefix)
         ?? (ImplicitNamespaces.Of(element)?.ByPrefix.TryGetValue(prefix, out var ns) == true ? ns : null);
 
+    /// <summary>
+    /// The first of <paramref name="candidates"/> that has a prefix in scope (declared or implicit), else the first
+    /// candidate: which of the two <c>x:</c> (or <c>d:</c>) URIs a file really uses.
+    /// </summary>
+    public static XNamespace FirstInUse(this XElement element, params XNamespace[] candidates) =>
+        candidates.FirstOrDefault(ns => element.PrefixOf(ns) is not null) ?? candidates[0];
+
+    /// <summary>
+    /// <paramref name="wanted"/> if no declaration in the document (or implicit namespace) uses that prefix yet, else
+    /// <c>wanted2</c>, <c>wanted3</c>…: a prefix that can be declared on the root without changing what any name means.
+    /// </summary>
+    public static string FreePrefix(this XElement element, string wanted)
+    {
+        var root = element.AncestorsAndSelf().Last();
+        var used = root.DescendantsAndSelf().SelectMany(e => e.Attributes())
+            .Where(a => a.IsNamespaceDeclaration && a.Name.Namespace == XNamespace.Xmlns)
+            .Select(a => a.Name.LocalName)
+            .ToHashSet(StringComparer.Ordinal);
+        if (ImplicitNamespaces.Of(element) is { } implicitNamespaces)
+        {
+            used.UnionWith(implicitNamespaces.ByPrefix.Keys.Where(p => p.Length > 0));
+        }
+
+        var prefix = wanted;
+        for (var n = 2; used.Contains(prefix); n++)
+        {
+            prefix = wanted + n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return prefix;
+    }
+
     /// <summary>The default namespace in scope: declared with <c>xmlns</c>, else the implicit one.</summary>
     public static XNamespace DefaultNamespaceOf(this XElement element)
     {

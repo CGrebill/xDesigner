@@ -6,7 +6,9 @@ namespace XDesigner.Core.Project;
 /// <summary>Runs a command-line tool (dotnet) and streams its output line by line.</summary>
 public static class ProcessRunner
 {
-    public sealed record Result(int ExitCode, string Output);
+    /// <param name="Output">stdout and stderr, in the order they came.</param>
+    /// <param name="StandardOutput">stdout alone (machine-readable output such as <c>-getProperty</c> JSON, without warnings).</param>
+    public sealed record Result(int ExitCode, string Output, string StandardOutput = "");
 
     /// <summary>
     /// Runs <paramref name="fileName"/> in <paramref name="workingDirectory"/> (so that directory's <c>global.json</c> picks the SDK,
@@ -18,7 +20,8 @@ public static class ProcessRunner
     {
         using var process = new Process { StartInfo = CreateStartInfo(fileName, arguments, workingDirectory), EnableRaisingEvents = true };
         var output = new StringBuilder();
-        void Receive(string? line)
+        var standardOutput = new StringBuilder();
+        void Receive(string? line, bool isStandardOutput)
         {
             if (line is null)
             {
@@ -28,13 +31,17 @@ public static class ProcessRunner
             lock (output)
             {
                 output.AppendLine(line);
+                if (isStandardOutput)
+                {
+                    standardOutput.AppendLine(line);
+                }
             }
 
             onLine?.Invoke(line);
         }
 
-        process.OutputDataReceived += (_, e) => Receive(e.Data);
-        process.ErrorDataReceived += (_, e) => Receive(e.Data);
+        process.OutputDataReceived += (_, e) => Receive(e.Data, isStandardOutput: true);
+        process.ErrorDataReceived += (_, e) => Receive(e.Data, isStandardOutput: false);
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
@@ -60,7 +67,7 @@ public static class ProcessRunner
         process.WaitForExit(); // flush the async output readers
         lock (output)
         {
-            return new Result(process.ExitCode, output.ToString());
+            return new Result(process.ExitCode, output.ToString(), standardOutput.ToString());
         }
     }
 

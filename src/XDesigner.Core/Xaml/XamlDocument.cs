@@ -46,6 +46,15 @@ public sealed class XamlDocument
     /// </summary>
     public Frameworks.FrameworkProfile Profile { get; set; }
 
+    /// <summary>
+    /// The XAML language namespace (<c>x:</c>) this file uses: the 2006 or 2009 URI, whichever it declares (a MAUI file
+    /// may use either), else the profile's. <c>x:Class</c> and <c>x:Name</c> are read and written under it (§5.3).
+    /// </summary>
+    public XNamespace XamlNamespace => Xml.Root!.FirstInUse(Profile.XamlNamespace, Frameworks.FrameworkProfile.Xaml2009Namespace, Frameworks.FrameworkProfile.Xaml2006Namespace);
+
+    /// <summary>The design-time namespace (<c>d:</c>) this file uses: Blend's or MAUI's, whichever it declares, else the profile's.</summary>
+    public XNamespace DesignNamespace => Xml.Root!.FirstInUse(Profile.DesignNamespace, Frameworks.FrameworkProfile.MauiDesignNamespace, Frameworks.FrameworkProfile.BlendDesignNamespace);
+
     /// <summary>Identifies this open document for the session (e.g. to tell whether a clipboard fragment came from it).</summary>
     public string InstanceId { get; } = Guid.NewGuid().ToString("N");
 
@@ -261,7 +270,45 @@ public sealed class XamlDocument
         }
 
         preambleLength = 0;
+
+        // No BOM: the encoding the XML declaration names (a legacy windows-1252 file), else UTF-8 (review L5).
+        if (DeclaredEncoding(bytes) is { } declared && declared.CodePage != Encoding.UTF8.CodePage)
+        {
+            return declared;
+        }
+
+        try
+        {
+            _ = new UTF8Encoding(false, throwOnInvalidBytes: true).GetCharCount(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            // Decoding it anyway would turn its characters into U+FFFD, and saving would write them that way.
+            throw new IOException("The file isn't UTF-8 text and doesn't say which encoding it uses. Save it as UTF-8 to edit it in the designer.");
+        }
+
         return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+    }
+
+    /// <summary>The encoding named by <c>&lt;?xml … encoding="…"?&gt;</c> at the start of the file, if any and known.</summary>
+    private static Encoding? DeclaredEncoding(byte[] bytes)
+    {
+        var head = Encoding.Latin1.GetString(bytes, 0, Math.Min(bytes.Length, 1024));
+        var match = System.Text.RegularExpressions.Regex.Match(head, @"^\s*<\?xml[^>]*?\bencoding\s*=\s*[""']([A-Za-z0-9._-]+)[""']");
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        try
+        {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); // windows-1252 and the other code pages
+            return Encoding.GetEncoding(match.Groups[1].Value);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 
     private sealed class BatchScope(XamlDocument document) : IDisposable

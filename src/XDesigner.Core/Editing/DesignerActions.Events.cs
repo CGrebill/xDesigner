@@ -102,7 +102,7 @@ public sealed partial class DesignerActions
         {
             if (_document.Xml.Root!.PrefixOf(XamlNs) is null)
             {
-                commands.Add(new SetAttributeCommand(root.Id, XNamespace.Xmlns + "x", XamlNs.NamespaceName));
+                commands.Add(new SetAttributeCommand(root.Id, XNamespace.Xmlns + _document.Xml.Root!.FreePrefix("x"), XamlNs.NamespaceName));
             }
 
             commands.Add(new PrependAttributeCommand(node.Id, XamlNs + "Name", newName));

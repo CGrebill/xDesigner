@@ -13,15 +13,18 @@ namespace XDesigner.Core.Rendering;
 public sealed record RenderHostStartInfo(string HostExecutablePath, string? UserAssemblyPath, bool UseUserApplication = true, string? ProjectDirectory = null);
 
 /// <summary>The host process exited before it could serve requests (e.g. the user's App failed to start).</summary>
-public sealed class RenderHostStartException(string message, int? exitCode, string errorOutput) : Exception(message)
+public sealed class RenderHostStartException(string message, int? exitCode, string errorOutput, bool timedOut = false) : Exception(message)
 {
-    /// <summary>Process exit code, if it exited. 3 means Avalonia/user app setup failed.</summary>
+    /// <summary>Process exit code, if it exited (<see cref="ProtocolInfo.SetupFailedExitCode"/>: the framework or the project's App failed).</summary>
     public int? ExitCode { get; } = exitCode;
 
     /// <summary>What the host wrote to stderr (diagnostics).</summary>
     public string ErrorOutput { get; } = errorOutput;
 
-    public bool IsSetupFailure => ExitCode == 3;
+    /// <summary>It didn't start in time: the project's App may hang while starting.</summary>
+    public bool TimedOut { get; } = timedOut;
+
+    public bool IsSetupFailure => ExitCode == ProtocolInfo.SetupFailedExitCode;
 }
 
 /// <summary>
@@ -37,9 +40,8 @@ public sealed class RenderHostConnection : IAsyncDisposable
     private readonly StderrBuffer _stderr;
     private int _disposed;
 
-    private RenderHostConnection(RenderHostStartInfo startInfo, Process process, NamedPipeClientStream pipe, JsonRpc rpc, StderrBuffer stderr, HostInfo info)
+    private RenderHostConnection(Process process, NamedPipeClientStream pipe, JsonRpc rpc, StderrBuffer stderr, HostInfo info)
     {
-        StartInfo = startInfo;
         _process = process;
         _pipe = pipe;
         _rpc = rpc;
@@ -48,8 +50,6 @@ public sealed class RenderHostConnection : IAsyncDisposable
         Host = rpc.Attach<IRenderHost>();
         _ = WatchAsync();
     }
-
-    public RenderHostStartInfo StartInfo { get; }
 
     /// <summary>The host's handshake answer.</summary>
     public HostInfo Info { get; }
@@ -101,7 +101,7 @@ public sealed class RenderHostConnection : IAsyncDisposable
             psi.ArgumentList.Add("--no-user-app");
         }
 
-        var process = Process.Start(psi) ?? throw new InvalidOperationException("Could not start the render host.");
+        var process = Process.Start(psi) ?? throw new InvalidOperationException("Couldn't start the render host.");
         var stderr = new StderrBuffer(process);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -135,21 +135,25 @@ public sealed class RenderHostConnection : IAsyncDisposable
                     $"Render host speaks protocol {info.ProtocolVersion}, the designer expects {ProtocolInfo.Version}.", null, "");
             }
 
-            return new RenderHostConnection(startInfo, process, pipe, rpc, stderr, info);
+            return new RenderHostConnection(process, pipe, rpc, stderr, info);
         }
         catch (Exception ex) when (ex is not RenderHostStartException)
         {
             await AbandonAsync(timeoutCts, connect, pipe, process).ConfigureAwait(false);
             if (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested)
             {
-                throw new RenderHostStartException("The render host did not start in time.", null, await stderr.ReadAllAsync().ConfigureAwait(false));
+                var errors = await stderr.ReadAllAsync().ConfigureAwait(false);
+                process.Dispose(); // its handle too (review L7)
+                throw new RenderHostStartException("The render host did not start in time.", null, errors, timedOut: true);
             }
 
+            process.Dispose();
             throw;
         }
         catch
         {
             await AbandonAsync(timeoutCts, connect, pipe, process).ConfigureAwait(false);
+            process.Dispose();
             throw;
         }
     }

@@ -93,7 +93,7 @@ internal static class Program
     private static void PrintUsage() => Console.Error.WriteLine(
         $"""
         Usage (run from a shadow folder: the project's build output with this host's files on top):
-          XDesigner.RenderHost.{FrameworkId} --pipe <name> [--assembly <path>] [--project <dir>] [--parent-pid <pid>] [--no-user-app]
+          XDesigner.RenderHost.{FrameworkId} --pipe <name> [--assembly <path>] [--parent-pid <pid>] [--no-user-app]
           XDesigner.RenderHost.{FrameworkId} --render <file.xaml> --out <file.png> [--assembly <path>] [--scale <n>] [--theme Light|Dark] [--size <w>x<h>] [--no-user-app]
           XDesigner.RenderHost.{FrameworkId} --version
         """);

@@ -29,11 +29,14 @@ public static class XamlValueText
             : $"{Double(left)},{Double(top)},{Double(right)},{Double(bottom)}";
     }
 
-    /// <summary>Corner radius in XAML order (top-left, top-right, bottom-right, bottom-left), collapsed when uniform.</summary>
-    public static string CornerRadius(double topLeft, double topRight, double bottomRight, double bottomLeft) =>
-        topLeft == topRight && topRight == bottomRight && bottomRight == bottomLeft
-            ? Double(topLeft)
-            : $"{Double(topLeft)},{Double(topRight)},{Double(bottomRight)},{Double(bottomLeft)}";
+    /// <summary>
+    /// Corner radius: the four corners in the framework's order (Avalonia and WinUI top-left, top-right, bottom-right,
+    /// bottom-left; MAUI top-left, top-right, bottom-left, bottom-right), collapsed to one number when uniform.
+    /// </summary>
+    public static string CornerRadius(double first, double second, double third, double fourth) =>
+        first == second && second == third && third == fourth
+            ? Double(first)
+            : $"{Double(first)},{Double(second)},{Double(third)},{Double(fourth)}";
 
     /// <summary><c>#RRGGBB</c> when opaque, otherwise <c>#AARRGGBB</c>.</summary>
     public static string Color(byte a, byte r, byte g, byte b) =>

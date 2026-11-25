@@ -68,6 +68,20 @@ public sealed partial class MainWindow
             return;
         }
 
+        // Solution Explorer and the Output pane aren't the design: Ctrl+X there mustn't delete controls (review L49).
+        if (IsWithin(e.OriginalSource as DependencyObject, SolutionPane, OutputPaneBorder))
+        {
+            if (e.Key == Windows.System.VirtualKey.C && IsWithin(e.OriginalSource as DependencyObject, ErrorsList) && ErrorsList.SelectedItem is { } row)
+            {
+                var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                package.SetText(row.ToString() ?? "");
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package); // the error itself
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         Action? action = e.Key switch
         {
             Windows.System.VirtualKey.Z => () => ViewModel.SelectedDocument?.Undo.Undo(),
@@ -83,6 +97,20 @@ public sealed partial class MainWindow
             action();
             e.Handled = true;
         }
+    }
+
+    /// <summary>Whether <paramref name="element"/> is one of <paramref name="containers"/> or inside one.</summary>
+    private static bool IsWithin(DependencyObject? element, params DependencyObject[] containers)
+    {
+        for (var node = element; node is not null; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))
+        {
+            if (containers.Contains(node))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void Undo_Click(object sender, RoutedEventArgs e) => ViewModel.SelectedDocument?.Undo.Undo();
@@ -267,7 +295,7 @@ public sealed partial class MainWindow
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            ViewModel.AppendLog($"Could not save {doc.Title}: {ex.Message}");
+            ViewModel.AppendLog($"Couldn't save {doc.Title}: {ex.Message}");
             return false;
         }
     }

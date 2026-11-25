@@ -25,30 +25,46 @@ internal sealed partial class MauiRenderer(HostApp host, MauiSanitizer sanitizer
     /// <summary>The root of the last successful render (kept alive for value queries).</summary>
     public VisualElement? CurrentRoot { get; private set; }
 
+    /// <summary>The properties the last render's XAML writes on each element, by design id (to tell Local values from styles').</summary>
+    public IReadOnlyDictionary<int, HashSet<string>> WrittenProperties { get; private set; } = new Dictionary<int, HashSet<string>>();
+
     public async Task<RenderResult> RenderAsync(RenderRequest request)
     {
         SanitizedMauiXaml copy;
         VisualElement root;
+        Window? window = null;
         try
         {
             copy = sanitizer.Sanitize(request.Xaml);
-            if (copy.RootType is not { } rootType || !typeof(VisualElement).IsAssignableFrom(rootType))
+            var isWindow = copy.RootType is { } t && typeof(Window).IsAssignableFrom(t);
+            if (copy.RootType is not { } rootType || !(isWindow || typeof(VisualElement).IsAssignableFrom(rootType)))
             {
                 throw new NotSupportedException(copy.RootType is null
                     ? "The document's root element isn't a type the renderer knows."
-                    : $"Only pages and views can be designed; the document root is a {copy.RootType.Name}.");
+                    : $"Only windows, pages and views can be designed; the document root is a {copy.RootType.Name}.");
             }
 
-            root = (VisualElement)Activator.CreateInstance(rootType)!;
-            root.LoadFromXaml(copy.Xaml);
+            if (isWindow)
+            {
+                // A Window isn't drawn itself: its Page is, inside the Window the layout reports (as the WinUI renderer does).
+                window = (Window)Activator.CreateInstance(rootType)!;
+                window.LoadFromXaml(copy.Xaml);
+                root = window.Page ?? throw new NotSupportedException("The window has no page to show.");
+            }
+            else
+            {
+                root = (VisualElement)Activator.CreateInstance(rootType)!;
+                root.LoadFromXaml(copy.Xaml);
+            }
         }
         catch (Exception ex)
         {
             return RenderResult.Failed(request.Version, ToRenderError(ex));
         }
 
-        var width = request.DesignSize?.Width ?? FirstUsable(root.WidthRequest, copy.DesignWidth, DefaultDesignWidth);
-        var height = request.DesignSize?.Height ?? FirstUsable(root.HeightRequest, copy.DesignHeight, DefaultDesignHeight);
+        // A design size of 0 or NaN falls back like a missing one (review L35).
+        var width = FirstUsable(request.DesignSize?.Width, root.WidthRequest, window?.Width, copy.DesignWidth, DefaultDesignWidth);
+        var height = FirstUsable(request.DesignSize?.Height, root.HeightRequest, window?.Height, copy.DesignHeight, DefaultDesignHeight);
         var scale = FrameScale.Effective(width, height, request.Scale);
 
         Xaml.FrameworkElement frame;
@@ -82,9 +98,16 @@ internal sealed partial class MauiRenderer(HostApp host, MauiSanitizer sanitizer
             await WaitForImageSourcesAsync(root);
             var (pixelWidth, pixelHeight, pixels) = await FrameCapture.CaptureAsync(frame);
             var layout = MauiLayoutTree.Build(root);
+            if (window is not null && DesignTime.DesignId.GetValue(window) is var windowId and not 0 && layout is not null)
+            {
+                layout = new ElementLayout(windowId, typeof(Window).FullName!, new RectDto(0, 0, width, height), true,
+                    ThicknessDto.Zero, ThicknessDto.Zero, null, [layout]);
+            }
+
             ReplaceCurrent(frame, root);
-            var rootKind = root is Page or ContentView ? RootKind.UserControl : RootKind.Other;
-            return new RenderResult(request.Version, true, pixelWidth, pixelHeight, pixelWidth / width, pixels, layout, rootKind, null, null);
+            WrittenProperties = Written(request.Xaml);
+            var rootKind = window is not null ? RootKind.Window : root is Page or ContentView ? RootKind.UserControl : RootKind.Other;
+            return new RenderResult(request.Version, true, pixelWidth, pixelHeight, pixelWidth / width, pixels, layout, rootKind, window?.Title, null);
         }
         catch (Exception ex)
         {
@@ -118,14 +141,21 @@ internal sealed partial class MauiRenderer(HostApp host, MauiSanitizer sanitizer
     /// </summary>
     private static async Task WaitForImageSourcesAsync(VisualElement root)
     {
+        // Sources that didn't arrive before aren't waited for again: an offline URL or a missing file would add the whole wait
+        // to every render (review L48).
         var images = Descendants(root).OfType<IImageSourcePart>()
-            .Where(i => i.Source is not null && i is VisualElement { Handler.PlatformView: Xaml.FrameworkElement })
-            .Select(i => ((VisualElement)i).Handler!.PlatformView!)
+            .Where(i => i.Source is not null && !Unavailable.Contains(KeyOf(i.Source)) && i is VisualElement { Handler.PlatformView: Xaml.FrameworkElement })
+            .Select(i => (Key: KeyOf(i.Source!), View: ((VisualElement)i).Handler!.PlatformView!))
             .ToList();
         var started = Environment.TickCount64;
-        while (images.Any(HasNoSource) && Environment.TickCount64 - started < ImageSourceWait.TotalMilliseconds)
+        while (images.Any(i => HasNoSource(i.View)) && Environment.TickCount64 - started < ImageSourceWait.TotalMilliseconds)
         {
             await Task.Delay(20);
+        }
+
+        foreach (var (key, _) in images.Where(i => HasNoSource(i.View) && i.Key.Length > 0))
+        {
+            Unavailable.Add(key);
         }
 
         static bool HasNoSource(object platformView) => platformView switch
@@ -136,7 +166,47 @@ internal sealed partial class MauiRenderer(HostApp host, MauiSanitizer sanitizer
         };
     }
 
+    /// <summary>
+    /// Attribute and property-element names per design id in the render copy: what the file sets. MAUI's IsSet is also
+    /// true for values a style set, which aren't written there (review L42).
+    /// </summary>
+    private static Dictionary<int, HashSet<string>> Written(string xaml)
+    {
+        var result = new Dictionary<int, HashSet<string>>();
+        try
+        {
+            var idName = System.Xml.Linq.XName.Get(XDesigner.Protocol.ProtocolInfo.DesignIdAttributeName, XDesigner.Protocol.ProtocolInfo.DesignIdXmlNamespace);
+            foreach (var element in MauiSanitizer.ParseWithImplicitNamespaces(xaml).Descendants())
+            {
+                if (int.TryParse((string?)element.Attribute(idName), System.Globalization.CultureInfo.InvariantCulture, out var id))
+                {
+                    var names = element.Attributes().Where(a => !a.IsNamespaceDeclaration).Select(a => a.Name.LocalName)
+                        .Concat(element.Elements().Select(e => e.Name.LocalName).Where(n => n.StartsWith(element.Name.LocalName + ".", StringComparison.Ordinal))
+                            .Select(n => n[(element.Name.LocalName.Length + 1)..]));
+                    result[id] = names.ToHashSet(StringComparer.Ordinal);
+                }
+            }
+        }
+        catch (System.Xml.XmlException)
+        {
+            // Rendered anyway: every set value counts as written.
+        }
+
+        return result;
+    }
+
     private static readonly TimeSpan ImageSourceWait = TimeSpan.FromSeconds(1.5);
+
+    /// <summary>Image sources that never arrived (for this host process, so until a build).</summary>
+    private static readonly HashSet<string> Unavailable = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>What identifies a source across renders: its URL or file; nothing for a stream.</summary>
+    private static string KeyOf(IImageSource source) => source switch
+    {
+        UriImageSource uri => uri.Uri?.ToString() ?? "",
+        FileImageSource file => file.File ?? "",
+        _ => "",
+    };
 
     private static IEnumerable<IVisualTreeElement> Descendants(IVisualTreeElement element) =>
         element.GetVisualChildren().SelectMany(Descendants).Prepend(element);
@@ -177,7 +247,7 @@ internal sealed partial class MauiRenderer(HostApp host, MauiSanitizer sanitizer
     {
         try
         {
-            root.Handler?.DisconnectHandler();
+            ((IView)root).DisconnectHandlers(); // every handler in the tree: child views hold timers, media, platform events (review L43)
         }
         catch
         {

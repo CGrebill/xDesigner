@@ -29,8 +29,11 @@ public sealed class SolutionNodeViewModel
 
     public string Label { get; }
 
-    /// <summary>The project's framework, "(startup)", or nothing.</summary>
+    /// <summary>The project's framework and "startup" (<c>Avalonia 12, startup</c>), a solution's project count, or nothing.</summary>
     public string Detail { get; private init; }
+
+    /// <summary>What a screen reader says for the row: the name and its detail (review L51).</summary>
+    public string AccessibleName => Detail.Length == 0 ? Label : $"{Label}, {Detail}";
 
     /// <summary>The file or folder (or project file, or solution file).</summary>
     public string Path { get; }
@@ -60,30 +63,32 @@ public sealed class SolutionNodeViewModel
     /// <summary>
     /// The tree for a solution: the solution (when there is one), its projects (startup in bold, with their framework),
     /// their folders, and their XAML and C# files, a code-behind file under its XAML file. <paramref name="expanded"/>
-    /// keeps rows open across rebuilds of the tree.
+    /// keeps rows open across rebuilds of the tree; <paramref name="collapsed"/> keeps the ones the user closed (the solution
+    /// and the startup project start open) closed (review L18).
     /// </summary>
-    public static IReadOnlyList<SolutionNodeViewModel> Build(SolutionModel solution, string? startupProjectPath, ISet<string> expanded)
+    public static IReadOnlyList<SolutionNodeViewModel> Build(SolutionModel solution, string? startupProjectPath, ISet<string> expanded, ISet<string>? collapsed = null)
     {
-        var projects = solution.Projects.Select(p => ProjectNode(p, startupProjectPath, expanded)).ToList();
+        collapsed ??= new HashSet<string>();
+        var projects = solution.Projects.Select(p => ProjectNode(p, startupProjectPath, expanded, collapsed)).ToList();
         if (solution.SolutionPath is not { } path)
         {
             return projects;
         }
 
         var root = new SolutionNodeViewModel(SolutionNodeKind.Solution, $"Solution '{solution.Name}'", path, null,
-            $"{solution.Projects.Count} project{(solution.Projects.Count == 1 ? "" : "s")}") { IsExpanded = true };
+            $"{solution.Projects.Count} project{(solution.Projects.Count == 1 ? "" : "s")}") { IsExpanded = !collapsed.Contains(path) };
         root.Children.AddRange(projects);
         return [root];
     }
 
-    private static SolutionNodeViewModel ProjectNode(SolutionProject project, string? startupProjectPath, ISet<string> expanded)
+    private static SolutionNodeViewModel ProjectNode(SolutionProject project, string? startupProjectPath, ISet<string> expanded, ISet<string> collapsed)
     {
         var isStartup = string.Equals(project.Info.ProjectPath, startupProjectPath, StringComparison.OrdinalIgnoreCase);
         var detail = string.Join(", ", new[] { project.Framework.Profile?.DisplayName, isStartup ? "startup" : null }.OfType<string>());
         var node = new SolutionNodeViewModel(SolutionNodeKind.Project, project.Info.Name, project.Info.ProjectPath, project, detail)
         {
             IsStartup = isStartup,
-            IsExpanded = isStartup || expanded.Contains(project.Info.ProjectPath),
+            IsExpanded = !collapsed.Contains(project.Info.ProjectPath) && (isStartup || expanded.Contains(project.Info.ProjectPath)),
         };
 
         var folders = new Dictionary<string, SolutionNodeViewModel>(StringComparer.OrdinalIgnoreCase) { [project.Info.Directory] = node };

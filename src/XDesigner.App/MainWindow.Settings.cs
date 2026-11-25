@@ -107,9 +107,32 @@ public sealed partial class MainWindow
         SavePaneSizes();
     }
 
-    private void ShowSolutionExplorer_Click(object sender, RoutedEventArgs e) => SideTabs.SelectedItem = SolutionTab;
+    private void ShowSolutionExplorer_Click(object sender, RoutedEventArgs e)
+    {
+        SideTabs.SelectedItem = SolutionTab;
+        SolutionPane.FocusTree(); // keyboard users land in it (review L51)
+    }
 
-    private void ShowErrorList_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Ctrl+Alt+L is AltGr+L on many keyboards (ł in Polish): while typing in a box, the key is the character, not the
+    /// shortcut (review L50).
+    /// </summary>
+    private void SolutionAccelerator_Invoked(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(Content.XamlRoot) is TextBox or AutoSuggestBox or PasswordBox or RichEditBox)
+        {
+            args.Handled = true; // no pane switch; the box gets its character
+            return;
+        }
+
+        ShowSolutionExplorer_Click(sender, new RoutedEventArgs());
+        args.Handled = true;
+    }
+
+    private void ShowErrorList_Click(object sender, RoutedEventArgs e) => ShowOutputTab(ErrorsTab);
+
+    /// <summary>Brings an Output tab forward, showing the Output pane first if View ▸ Output hid it (review M32).</summary>
+    private void ShowOutputTab(SelectorBarItem tab)
     {
         if (!ShowOutputMenuItem.IsChecked)
         {
@@ -117,7 +140,7 @@ public sealed partial class MainWindow
             ApplyPaneVisibility();
         }
 
-        OutputTabs.SelectedItem = ErrorsTab;
+        OutputTabs.SelectedItem = tab;
     }
 
     private void GridSnapToggle_Click(object sender, RoutedEventArgs e)
@@ -167,8 +190,7 @@ public sealed partial class MainWindow
             var clear = new MenuFlyoutItem { Text = "Clear the list" };
             clear.Click += (_, _) =>
             {
-                ViewModel.Settings.Recent.Clear();
-                ViewModel.SaveSettings();
+                ViewModel.ChangeRecent(s => s.Recent.Clear());
                 RebuildRecent();
             };
             RecentMenu.Items.Add(clear);

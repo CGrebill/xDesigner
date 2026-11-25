@@ -46,7 +46,6 @@ public sealed class WinUIProfileTests : IDisposable
         var (doc, _, _) = Open($"<Page {Ns}><Grid /></Page>");
 
         Assert.Same(FrameworkProfile.WinUI3, doc.Profile);
-        Assert.True(doc.Profile.IsSupported);
     }
 
     [Fact]
@@ -148,6 +147,18 @@ public sealed class WinUIProfileTests : IDisposable
         var text = File.ReadAllText(csproj);
         Assert.Contains("<Content Include=\"Assets\\**\" Exclude=\"@(Content)\" CopyToOutputDirectory=\"PreserveNewest\" />", text, StringComparison.Ordinal);
         Assert.False(ProjectFileEditor.EnsureAssetsItem(csproj, FrameworkProfile.WinUI3));
+    }
+
+    /// <summary>Tabs written in &lt;TabView.TabItems&gt;, WinUI's usual markup, are in the outline (review M13).</summary>
+    [Fact]
+    public void Outline_ShowsTabsInsideTabItems()
+    {
+        var doc = XamlDocument.Parse($"""<Page {Ns}><TabView><TabView.TabItems><TabViewItem Header="A"><Button /></TabViewItem></TabView.TabItems></TabView></Page>""");
+
+        var tabView = doc.Root.Children.Single();
+        var tab = Assert.Single(tabView.Children);
+        Assert.Equal("TabViewItem", tab.TypeName);
+        Assert.Equal("Button", Assert.Single(tab.Children).TypeName);
     }
 
     [Fact]

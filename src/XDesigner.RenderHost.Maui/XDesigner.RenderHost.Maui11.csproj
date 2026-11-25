@@ -14,4 +14,17 @@
 
   <Import Project="XDesigner.RenderHost.Maui.props" />
 
+  <!--
+    Parts of the Windows App SDK that MAUI 11 brings and the renderer never uses (AI, machine learning: onnxruntime and
+    DirectML, Search, Widgets; about 53 MB), kept out as the app does. The versions are the ones MAUI 11.0.0 brings: after
+    updating MAUI, use the new ones from objproject.assets.json (NuGet reports a downgrade otherwise).
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK.AI" VersionOverride="2.5.5" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.ML" VersionOverride="2.1.94" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Search" VersionOverride="2.5.5" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Widgets" VersionOverride="2.0.5" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.Windows.AI.MachineLearning" VersionOverride="2.1.74" ExcludeAssets="all" />
+  </ItemGroup>
+
 </Project>

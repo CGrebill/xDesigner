@@ -18,10 +18,13 @@ public static class ProjectAssets
 {
     public const string FolderName = "Assets";
 
-    /// <summary>File types the image picker offers (SVG needs an extra package, so it isn't one of them).</summary>
+    /// <summary>File types the image picker offers (SVG needs an extra package in Avalonia, so it isn't one of them).</summary>
     public static readonly IReadOnlyList<string> ImageExtensions = [".png", ".jpg", ".jpeg", ".bmp", ".gif", ".ico", ".webp"];
 
-    public static bool IsImage(string path) => ImageExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
+    /// <summary>The image types of a framework: MAUI also takes SVG, which its build turns into PNG (review L9).</summary>
+    public static IReadOnlyList<string> ImageExtensionsFor(FrameworkProfile? profile) => IsMaui(profile) ? [.. ImageExtensions, ".svg"] : ImageExtensions;
+
+    public static bool IsImage(string path, FrameworkProfile? profile = null) => ImageExtensionsFor(profile).Contains(Path.GetExtension(path).ToLowerInvariant());
 
     /// <summary>XAML paths of the project's images, sorted.</summary>
     public static IReadOnlyList<string> ListImages(string projectDirectory, FrameworkProfile? profile = null)
@@ -33,8 +36,9 @@ public static class ProjectAssets
         }
 
         return Directory.EnumerateFiles(folder, "*", IsMaui(profile) ? SearchOption.TopDirectoryOnly : SearchOption.AllDirectories)
-            .Where(IsImage)
+            .Where(f => IsImage(f, profile))
             .Select(f => ToXamlPath(projectDirectory, f, profile))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -47,7 +51,10 @@ public static class ProjectAssets
     {
         if (IsMaui(profile))
         {
-            return Path.GetFileName(filePath);
+            // An SVG MauiImage is used as the PNG MAUI makes of it: dotnet_bot.svg is Source="dotnet_bot.png".
+            return Path.GetExtension(filePath).Equals(".svg", StringComparison.OrdinalIgnoreCase)
+                ? Path.GetFileNameWithoutExtension(filePath) + ".png"
+                : Path.GetFileName(filePath);
         }
 
         return (profile?.ResourceUriScheme == "ms-appx" ? "ms-appx:///" : "/") + Path.GetRelativePath(projectDirectory, filePath).Replace('\\', '/');
@@ -61,7 +68,9 @@ public static class ProjectAssets
     {
         if (IsMaui(profile) && xamlPath is { Length: > 0 } && !xamlPath.Contains('/') && !xamlPath.Contains('\\') && xamlPath != ".." && !xamlPath.Contains(':'))
         {
-            return Path.Combine(Path.GetFullPath(projectDirectory), FolderOf(profile), xamlPath);
+            var file = Path.Combine(Path.GetFullPath(projectDirectory), FolderOf(profile), xamlPath);
+            var svg = Path.ChangeExtension(file, ".svg");
+            return !File.Exists(file) && Path.GetExtension(file).Equals(".png", StringComparison.OrdinalIgnoreCase) && File.Exists(svg) ? svg : file;
         }
 
         if (xamlPath?.StartsWith("ms-appx:///", StringComparison.OrdinalIgnoreCase) == true)

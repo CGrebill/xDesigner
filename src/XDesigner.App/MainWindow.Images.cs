@@ -6,7 +6,7 @@ using Windows.Storage.Pickers;
 namespace XDesigner.App;
 
 /// <summary>
-/// The image picker's Browse… (§12): copy the picked file into the project's Assets folder (an identical file already
+/// The image picker's Browse… (§12): copy the picked file into the project's images folder (Assets; MAUI ResourcesImages) (an identical file already
 /// there is reused), make sure the project packages Assets, set the property, then rebuild so the renderer has it.
 /// </summary>
 public sealed partial class MainWindow
@@ -22,7 +22,7 @@ public sealed partial class MainWindow
         }
 
         var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.PicturesLibrary, ViewMode = PickerViewMode.Thumbnail };
-        foreach (var extension in ProjectAssets.ImageExtensions)
+        foreach (var extension in ProjectAssets.ImageExtensionsFor(document.Xaml.Profile))
         {
             picker.FileTypeFilter.Add(extension);
         }
@@ -61,7 +61,8 @@ public sealed partial class MainWindow
         // The renderer reads images from the built assembly: a new file needs a build before it shows.
         if (import.Copied || projectChanged || document.UserAssemblyPath is null)
         {
-            if (ViewModel.Project is { } open && open.Contains(document.FilePath))
+            // Any project of the open solution: a build builds them all, not only the startup project (review M31).
+            if (ViewModel.ProjectOf(document.FilePath) is not null || (ViewModel.Project is { } open && open.Contains(document.FilePath)))
             {
                 ViewModel.AppendLog($"Rebuilding so {import.XamlPath} shows in the designer…");
                 await ViewModel.BuildAsync(saveDocuments: false);
@@ -69,7 +70,7 @@ public sealed partial class MainWindow
             else
             {
                 ShowNotification(NotifyKind.Warning,
-                    $"{import.XamlPath} was added to the project. Open the project (Project › Open project) or build it to see the image here.");
+                    $"{import.XamlPath} was added to the project. Open the project (Project ▸ Open project) or build it to see the image here.");
             }
         }
     }

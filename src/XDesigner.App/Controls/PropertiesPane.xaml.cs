@@ -100,6 +100,13 @@ public sealed partial class PropertiesPane : UserControl
                 _flushTarget = null;
             }
 
+            // A name the old document refused stays behind with that document's control id; ids are per document,
+            // so it must not be committed to the new one (review H1).
+            _nameTarget = null;
+            NameBox.Text = "";
+            _shownName = "";
+            ShowProblem(null);
+
             oldDocument.Selection.Changed -= OnSelectionChanged;
             oldDocument.Xaml.Changed -= OnXamlChanged;
             oldDocument.PropertyChanged -= OnDocumentPropertyChanged;
