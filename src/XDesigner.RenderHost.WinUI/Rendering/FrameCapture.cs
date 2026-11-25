@@ -56,13 +56,36 @@ internal static class FrameCapture
         }
 
         frame.UpdateLayout();
-        if (images.Count > 0)
+        if (images.Count == 0)
         {
-            // WinUI decodes images again at the size they are shown, asynchronously: let that reach the screen.
-            await RenderedFramesAsync(2);
-            frame.UpdateLayout();
+            return await DrawAsync(frame);
         }
 
+        // WinUI decodes images again at the size they are shown, asynchronously, and on a slow (software) renderer that
+        // can take longer than a frame or two: draw until two pictures in a row agree, or until the wait is up.
+        var deadline = DateTime.UtcNow + ImageWait;
+        await RenderedFramesAsync(2);
+        frame.UpdateLayout();
+        var drawn = await DrawAsync(frame);
+        while (DateTime.UtcNow < deadline)
+        {
+            await RenderedFramesAsync(2);
+            frame.UpdateLayout();
+            var again = await DrawAsync(frame);
+            var settled = again.Width == drawn.Width && again.Height == drawn.Height && again.Pixels.AsSpan().SequenceEqual(drawn.Pixels);
+            drawn = again;
+            if (settled)
+            {
+                return drawn;
+            }
+        }
+
+        Console.Error.WriteLine($"The form's images were still changing after {ImageWait.TotalSeconds:0.#} s; drawing it as it is.");
+        return drawn;
+    }
+
+    private static async Task<(int Width, int Height, byte[] Pixels)> DrawAsync(FrameworkElement frame)
+    {
         var bitmap = new RenderTargetBitmap();
         await bitmap.RenderAsync(frame);
         if (bitmap.PixelWidth == 0 || bitmap.PixelHeight == 0)
@@ -122,6 +145,7 @@ internal static class FrameCapture
         catch (TimeoutException)
         {
             // Draw anyway.
+            Console.Error.WriteLine($"Only {seen} of {count} frames were drawn in 250 ms.");
         }
         finally
         {
